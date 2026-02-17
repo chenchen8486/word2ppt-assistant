@@ -1,354 +1,262 @@
 import os
 import re
+import zipfile
+import xml.etree.ElementTree as ET
 import docx
-from docx.document import Document
 from utils.logger import get_logger
 
 logger = get_logger()
 
+class ImageExtractor:
+    def __init__(self, file_path, output_dir):
+        self.file_path = file_path
+        self.output_dir = output_dir
+
+    def extract(self):
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        with zipfile.ZipFile(self.file_path, "r") as zf:
+            self._extract_media(zf)
+            rels = self._load_relationships(zf)
+            image_map = self._map_images(zf, rels)
+        return image_map
+
+    def _extract_media(self, zf):
+        for info in zf.infolist():
+            if info.filename.startswith("word/media/") and not info.is_dir():
+                filename = os.path.basename(info.filename)
+                out_path = os.path.join(self.output_dir, filename)
+                with zf.open(info) as src, open(out_path, "wb") as dst:
+                    dst.write(src.read())
+
+    def _load_relationships(self, zf):
+        rels = {}
+        try:
+            rels_xml = zf.read("word/_rels/document.xml.rels")
+            root = ET.fromstring(rels_xml)
+            for rel in root.findall(".//{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"):
+                rid = rel.get("Id")
+                target = rel.get("Target")
+                if rid and target:
+                    rels[rid] = target
+        except Exception as e:
+            logger.warning(f"Failed to read relationships: {e}")
+        return rels
+
+    def _map_images(self, zf, rels):
+        image_map = {}
+        try:
+            doc_xml = zf.read("word/document.xml")
+            root = ET.fromstring(doc_xml)
+            ns = {
+                "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+                "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            }
+            paragraphs = root.findall(".//w:p", ns)
+            for idx, p in enumerate(paragraphs):
+                blips = p.findall(".//a:blip", ns)
+                paths = []
+                for blip in blips:
+                    rid = blip.get(f"{{{ns['r']}}}embed")
+                    if rid and rid in rels:
+                        filename = os.path.basename(rels[rid])
+                        path = os.path.join(self.output_dir, filename)
+                        if os.path.exists(path) and path not in paths:
+                            paths.append(path)
+                if paths:
+                    image_map[idx] = paths
+        except Exception as e:
+            logger.warning(f"Failed to parse document.xml: {e}")
+        return image_map
+
 class Standardizer:
-    def __init__(self, file_path, output_image_dir="images", llm_client=None):
+    def __init__(self, file_path, output_image_dir="temp_images", llm_client=None):
         self.file_path = file_path
         self.output_image_dir = output_image_dir
         self.llm_client = llm_client
-        self.doc = None
-        self.paragraphs = [] # List of {'text': str, 'images': [], 'original_index': int}
-        self.questions = {}  # Map id (str) -> dict
-        self.analysis_map = {} # Map id (str) -> {'answer': str, 'analysis': str}
-        
-        # Regex Patterns
-        self.start_pattern = re.compile(r'^[一二三四五六七八九十]+、') 
-        self.small_question_pattern = re.compile(r'^(\d+)\.')
-        # Matches 【1题详解】 or 1题详解
-        self.analysis_header_pattern = re.compile(r'^(?:【)?(\d+)题详解(?:】)?')
-        # Matches 【答案】
-        self.answer_header_pattern = re.compile(r'^【答案】')
-        
+        self.context_pattern = re.compile(r'^[一二三四五六七八九十]+、')
+        self.question_pattern = re.compile(r'^(\d+)[\.．、\s]|^[(（](\d+)[)）]|^Question\s*(\d+)', re.I)
         self.exclude_patterns = [
             re.compile(r'^【导语】'),
             re.compile(r'^参考译文')
         ]
-
-        if not os.path.exists(self.output_image_dir):
-            os.makedirs(self.output_image_dir)
+        self.answer_keyword = "【答案】"
+        self.analysis_keyword = "【解析】"
 
     def load_and_parse(self):
-        """
-        Main entry point.
-        """
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"File not found: {self.file_path}")
-
         logger.info(f"Loading document: {self.file_path}")
-        self.doc = docx.Document(self.file_path)
-        
-        # 1. Extract raw content
-        self._extract_content()
-        
-        # 2. Filter content (Start point, Excludes)
-        self._filter_content()
-        
-        # 3. Two-Pass Parsing
-        self._pass_1_extract_questions()
-        self._pass_2_extract_analysis()
-        
-        # 4. Merge
-        self._merge_data()
-        
-        # 5. LLM Refinement (Options extraction)
+        image_map = ImageExtractor(self.file_path, self.output_image_dir).extract()
+        doc = docx.Document(self.file_path)
+        paragraphs = []
+        for idx, p in enumerate(doc.paragraphs):
+            text = p.text.replace("\xa0", " ").strip()
+            images = image_map.get(idx, [])
+            paragraphs.append({"text": text, "images": images, "line_index": idx})
+        filtered = self._filter_paragraphs(paragraphs)
+        contexts, questions, answers, analyses = self._bucket(filtered)
+        aligned_questions = self._align(questions, answers, analyses)
         if self.llm_client:
-            self._refine_questions_with_llm()
-        
-        # 6. Build Result
-        return self._build_result_list()
+            aligned_questions = self._refine_questions_with_llm(aligned_questions)
+        items = self._build_items(contexts, aligned_questions)
+        return items
 
-    def _extract_content(self):
-        logger.info("Extracting content and images...")
-        image_count = 0
-        self.paragraphs = []
-        
-        # Collect all images first to avoid missing any?
-        # No, we need to associate them with paragraphs.
-        # Issue: Question 23 image might be embedded in a way python-docx misses with simple run iteration.
-        # Or it might be floating (anchored).
-        # python-docx doesn't support floating images well.
-        # Let's check paragraph relationships directly.
-        
-        for i, para in enumerate(self.doc.paragraphs):
-            text = para.text.strip()
-            # Basic cleanup
-            text = text.replace('\xa0', ' ') 
-            
-            images = []
-            
-            # Method 1: Inline shapes in runs
-            for run in para.runs:
-                if 'drawing' in run._element.xml:
-                    drawings = run._element.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing')
-                    for drawing in drawings:
-                        blips = drawing.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
-                        for blip in blips:
-                            embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-                            if embed_id:
-                                self._save_image(embed_id, i, images)
-            
-            # Method 2: Check for anchored images (floating) linked to this paragraph
-            # This requires inspecting the paragraph xml for w:drawing that might be anchored
-            # The previous check `if 'drawing' in run._element.xml` covers both inline and anchor if they are inside a run.
-            # Sometimes images are directly in paragraph xml?
-            # Let's check paragraph xml for any blip reference that we missed.
-            
-            # Extract all blip references in the paragraph XML, regardless of where they are
-            blips = para._element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
-            for blip in blips:
-                embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-                if embed_id:
-                    # Check if we already extracted this image? 
-                    # We can't easily check by ID if we don't track it.
-                    # But saving it again with same index is fine, we filter duplicates later?
-                    # Or just rely on this global search per paragraph.
-                    # Let's use a set of extracted embed_ids per paragraph to avoid duplicates.
-                    pass 
-
-            # Refined extraction: Use a set to track processed embed_ids for this paragraph
-            processed_embeds = set()
-            all_blips = para._element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
-            for blip in all_blips:
-                embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-                if embed_id and embed_id not in processed_embeds:
-                    self._save_image(embed_id, i, images)
-                    processed_embeds.add(embed_id)
-
-            self.paragraphs.append({
-                'text': text,
-                'images': images,
-                'original_index': i
-            })
-
-    def _save_image(self, embed_id, para_index, images_list):
-        try:
-            image_part = self.doc.part.related_parts[embed_id]
-            content_type = image_part.content_type
-            ext = 'jpg'
-            if 'png' in content_type: ext = 'png'
-            elif 'jpeg' in content_type: ext = 'jpg'
-            elif 'gif' in content_type: ext = 'gif'
-            elif 'bmp' in content_type: ext = 'bmp'
-            
-            # Unique filename
-            # Use embed_id in filename to identify unique images
-            filename = f"img_p{para_index}_{embed_id}.{ext}"
-            path = os.path.join(self.output_image_dir, filename)
-            
-            # Write file
-            with open(path, "wb") as f:
-                f.write(image_part.blob)
-            
-            # Append to list if not already present (check by path)
-            if path not in images_list:
-                images_list.append(path)
-        except Exception as e:
-            logger.warning(f"Image extraction failed for {embed_id}: {e}")
-
-    def _filter_content(self):
-        start_index = -1
-        # Look for "一、（x分）"
-        # User said: "一、（9分）"
-        # My regex: ^[一二三四五六七八九十]+、
-        # Let's find the first occurrence of this pattern.
-        
-        for i, p in enumerate(self.paragraphs):
-            if self.start_pattern.match(p['text']):
-                start_index = i
-                logger.info(f"Start point found at line {i}: {p['text']}")
+    def _filter_paragraphs(self, paragraphs):
+        start_index = 0
+        for p in paragraphs:
+            if self.context_pattern.match(p["text"]):
+                start_index = p["line_index"]
                 break
-        
-        if start_index == -1:
-            logger.warning("Start pattern not found. Using all content.")
-            start_index = 0
-            
         filtered = []
-        for i in range(start_index, len(self.paragraphs)):
-            p = self.paragraphs[i]
-            text = p['text']
-            should_exclude = any(pat.search(text) for pat in self.exclude_patterns)
-            if not should_exclude:
-                filtered.append(p)
-                
-        self.paragraphs = filtered
-
-    def _pass_1_extract_questions(self):
-        """
-        Identify Contexts and Questions.
-        We stop treating things as questions if we suspect we entered the Analysis section globally?
-        User said "Separated structure".
-        But regex is safer.
-        """
-        current_context = ""
-        current_q_id = None
-        current_lines = []
-        current_images = []
-        
-        for p in self.paragraphs:
-            text = p['text']
-            
-            # 1. Check for Analysis Header -> If found, we might be in Analysis land.
-            # But in Pass 1, we just want to NOT classify analysis as questions.
-            # If line matches "1题详解", it's definitely not a question start.
-            if self.analysis_header_pattern.match(text):
-                # End current question
-                if current_q_id:
-                    self._save_question(current_q_id, current_context, current_lines, current_images)
-                    current_q_id = None
-                    current_lines = []
-                    current_images = []
-                continue # Skip analysis lines in Pass 1
-
-            # 2. Check for Context (Big Question)
-            if self.start_pattern.match(text):
-                if current_q_id:
-                    self._save_question(current_q_id, current_context, current_lines, current_images)
-                    current_q_id = None
-                    current_lines = []
-                    current_images = []
-                current_context = text
+        for p in paragraphs:
+            if p["line_index"] < start_index:
                 continue
-
-            # 3. Check for Small Question Start
-            match = self.small_question_pattern.match(text)
-            if match:
-                # New Question
-                if current_q_id:
-                    self._save_question(current_q_id, current_context, current_lines, current_images)
-                
-                current_q_id = match.group(1)
-                current_lines = [text]
-                current_images = p['images']
-            else:
-                # Continuation
-                if current_q_id:
-                    # Check if this line looks like an Answer line?
-                    # If "【答案】" appears, it might be the end of the question text?
-                    if self.answer_header_pattern.match(text):
-                        # End of question text
-                        self._save_question(current_q_id, current_context, current_lines, current_images)
-                        current_q_id = None
-                        current_lines = []
-                        current_images = []
-                    else:
-                        current_lines.append(text)
-                        current_images.extend(p['images'])
-                elif current_context:
-                    # Append to context if no question active
-                    # But be careful not to append analysis text to context
-                    if not self.answer_header_pattern.match(text):
-                        current_context += "\n" + text
-
-        # Save last
-        if current_q_id:
-            self._save_question(current_q_id, current_context, current_lines, current_images)
-
-    def _save_question(self, q_id, context, lines, images):
-        if q_id in self.questions:
-            # Duplicate ID? 
-            # In exam papers, sometimes IDs restart?
-            # Assuming unique IDs for now as per user instruction "题号关联".
-            pass
-        
-        full_text = "\n".join(lines).strip()
-        self.questions[q_id] = {
-            "id": q_id,
-            "type": "question",
-            "context": context,
-            "question": full_text, # To be refined
-            "options": [],
-            "answer": "",
-            "analysis": "",
-            "images": images
-        }
-
-    def _pass_2_extract_analysis(self):
-        """
-        Identify Answers and Analysis.
-        """
-        current_ana_id = None
-        
-        for p in self.paragraphs:
-            text = p['text']
-            
-            # Check for Analysis Header
-            match = self.analysis_header_pattern.match(text)
-            if match:
-                current_ana_id = match.group(1)
-                if current_ana_id not in self.analysis_map:
-                    self.analysis_map[current_ana_id] = {'answer': '', 'analysis': ''}
-                
-                # Append header line to analysis? User says "ensure captured".
-                self.analysis_map[current_ana_id]['analysis'] += text + "\n"
+            if not p["text"] and not p["images"]:
                 continue
-                
-            # Check for Answer Header
-            match_ans = self.answer_header_pattern.match(text)
-            if match_ans:
-                # Extract answer content
-                # Format: "【答案】 A" or "【答案】\n A"
-                content = text.replace("【答案】", "").strip()
-                
-                # Assign to WHO?
-                # If we are inside an Analysis Block (current_ana_id is set), assign to it.
-                if current_ana_id:
-                    self.analysis_map[current_ana_id]['answer'] = content
-                else:
-                    # "散落在各处" -> Maybe it's just before/after something?
-                    # If we are NOT in analysis block, maybe we can't link it easily unless it has an ID nearby?
-                    # BUT, usually "【答案】" is followed by "1. A 2. B"?
-                    # Or "【答案】" is inside the question block (which we handled in Pass 1 to stop question)?
-                    # If it's a standalone "【答案】" line with no ID, it's hard.
-                    # Let's assume strict structure: "【1题详解】...【答案】A..."
-                    pass
+            if any(pat.search(p["text"]) for pat in self.exclude_patterns):
                 continue
+            filtered.append(p)
+        return filtered
 
-            # Continuation
-            if current_ana_id:
-                # If we hit a new Question or Context, we stop analysis?
-                # But Pass 1 already filtered those.
-                # Just check if we hit another header.
-                if self.start_pattern.match(text) or self.small_question_pattern.match(text):
-                    current_ana_id = None # Reset
-                else:
-                    self.analysis_map[current_ana_id]['analysis'] += text + "\n"
+    def _bucket(self, paragraphs):
+        contexts = []
+        questions = []
+        answers = []
+        analyses = []
+        last_type = None
+        last_item = None
+        for p in paragraphs:
+            text = p["text"]
+            images = p["images"]
+            if self.answer_keyword in text:
+                item = {"id": self._extract_any_id(text), "content": text, "line_index": p["line_index"]}
+                answers.append(item)
+                last_type = "answer"
+                last_item = item
+                continue
+            if self.analysis_keyword in text:
+                item = {"id": self._extract_any_id(text), "content": text, "line_index": p["line_index"]}
+                analyses.append(item)
+                last_type = "analysis"
+                last_item = item
+                continue
+            qid = self._extract_question_id(text)
+            if qid:
+                item = {"id": qid, "content": text, "line_index": p["line_index"], "images": list(images)}
+                questions.append(item)
+                last_type = "question"
+                last_item = item
+                continue
+            if self.context_pattern.match(text):
+                item = {"content": text, "line_index": p["line_index"]}
+                contexts.append(item)
+                last_type = "context"
+                last_item = item
+                continue
+            if last_item:
+                if text:
+                    last_item["content"] = f"{last_item['content']}\n{text}" if last_item["content"] else text
+                if last_type == "question" and images:
+                    for img in images:
+                        if img not in last_item["images"]:
+                            last_item["images"].append(img)
+        return contexts, questions, answers, analyses
 
-    def _merge_data(self):
-        for q_id, q_data in self.questions.items():
-            if q_id in self.analysis_map:
-                ana = self.analysis_map[q_id]
-                q_data['answer'] = ana['answer']
-                q_data['analysis'] = ana['analysis']
-            else:
-                logger.warning(f"Missing analysis for Question {q_id}")
-                q_data['analysis'] = "【解析待补充】"
+    def _align(self, questions, answers, analyses):
+        questions_sorted = sorted(questions, key=lambda x: x["line_index"])
+        answers_by_id = {a["id"]: a["content"] for a in answers if a.get("id")}
+        analyses_by_id = {a["id"]: a["content"] for a in analyses if a.get("id")}
+        answers_un = sorted([a for a in answers if not a.get("id")], key=lambda x: x["line_index"])
+        analyses_un = sorted([a for a in analyses if not a.get("id")], key=lambda x: x["line_index"])
+        used_answers = set()
+        used_analyses = set()
+        aligned = []
+        for q in questions_sorted:
+            qid = q["id"]
+            answer_text = answers_by_id.get(qid)
+            if not answer_text:
+                nearest = self._find_nearest_after(answers_un, q["line_index"], used_answers)
+                if nearest:
+                    answer_text = nearest["content"]
+            analysis_text = analyses_by_id.get(qid)
+            if not analysis_text:
+                nearest = self._find_nearest_after(analyses_un, q["line_index"], used_analyses)
+                if nearest:
+                    analysis_text = nearest["content"]
+            if not analysis_text:
+                analysis_text = "【解析待补充】"
+            aligned.append({
+                "type": "question",
+                "id": qid,
+                "line_index": q["line_index"],
+                "question": q["content"],
+                "options": [],
+                "answer": answer_text or "",
+                "analysis": analysis_text,
+                "images": q.get("images", [])
+            })
+        return aligned
 
-    def _refine_questions_with_llm(self):
-        """
-        Uses LLM to split 'question' text into 'stem' and 'options'.
-        Uses concurrent processing for speed.
-        """
+    def _build_items(self, contexts, questions):
+        contexts_sorted = sorted(contexts, key=lambda x: x["line_index"])
+        questions_sorted = sorted(questions, key=lambda x: x["line_index"])
+        items = []
+        ctx_idx = 0
+        last_context = None
+        for q in questions_sorted:
+            while ctx_idx < len(contexts_sorted) and contexts_sorted[ctx_idx]["line_index"] < q["line_index"]:
+                ctx_text = contexts_sorted[ctx_idx]["content"].strip()
+                if ctx_text and ctx_text != last_context:
+                    items.append({"type": "context", "content": ctx_text})
+                    last_context = ctx_text
+                ctx_idx += 1
+            items.append(q)
+        while ctx_idx < len(contexts_sorted):
+            ctx_text = contexts_sorted[ctx_idx]["content"].strip()
+            if ctx_text and ctx_text != last_context:
+                items.append({"type": "context", "content": ctx_text})
+                last_context = ctx_text
+            ctx_idx += 1
+        return items
+
+    def _find_nearest_after(self, items, line_index, used_set):
+        for item in items:
+            if item["line_index"] > line_index and id(item) not in used_set:
+                used_set.add(id(item))
+                return item
+        return None
+
+    def _extract_question_id(self, text):
+        match = self.question_pattern.search(text)
+        if not match:
+            return None
+        for group in match.groups():
+            if group:
+                return group
+        return None
+
+    def _extract_any_id(self, text):
+        match = self.question_pattern.search(text)
+        if match:
+            for group in match.groups():
+                if group:
+                    return group
+        num = re.search(r'(\d+)', text)
+        return num.group(1) if num else None
+
+    def _refine_questions_with_llm(self, questions):
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        logger.info("Refining questions with LLM...")
-        
-        q_ids = sorted(self.questions.keys(), key=lambda x: int(x) if x.isdigit() else 999)
+        q_map = {q["id"]: q for q in questions}
+        q_ids = [q["id"] for q in questions]
         batch_size = 5
-        batches = [q_ids[i:i+batch_size] for i in range(0, len(q_ids), batch_size)]
-        
-        total_batches = len(batches)
-        completed_batches = 0
-        
+        batches = [q_ids[i:i + batch_size] for i in range(0, len(q_ids), batch_size)]
+
         def process_batch(batch_ids):
             batch_text = ""
             for qid in batch_ids:
-                batch_text += f"--- Question {qid} ---\n{self.questions[qid]['question']}\n\n"
-            
+                batch_text += f"--- Question {qid} ---\n{q_map[qid]['question']}\n\n"
             sys_prompt = (
                 "You are an exam question parser. Your task is to split raw question text into 'Question Stem' and 'Options'.\n"
                 "Return a JSON LIST of objects. Each object must have:\n"
@@ -357,61 +265,20 @@ class Standardizer:
                 "- `options`: A list of strings for options (e.g. ['A. xxx', 'B. xxx']). If no options, return empty list.\n"
                 "Strictly return valid JSON."
             )
-
             try:
-                result = self.llm_client.process_chunk(
-                    batch_text, 
-                    system_prompt_override=sys_prompt
-                )
-                return result
+                return self.llm_client.process_chunk(batch_text, system_prompt_override=sys_prompt)
             except Exception as e:
                 logger.error(f"LLM refinement failed: {e}")
                 return None
 
-        # Use max 5 workers
         with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_batch = {executor.submit(process_batch, batch): batch for batch in batches}
-            
-            for future in as_completed(future_to_batch):
+            futures = {executor.submit(process_batch, batch): batch for batch in batches}
+            for future in as_completed(futures):
                 result = future.result()
                 if result:
                     for item in result:
-                        qid = str(item.get('id'))
-                        if qid in self.questions:
-                            self.questions[qid]['question'] = item.get('question', '')
-                            self.questions[qid]['options'] = item.get('options', [])
-                
-                completed_batches += 1
-                logger.info(f"Refinement progress: {completed_batches}/{total_batches} batches")
-
-    def _build_result_list(self):
-        # Return flat list with Context objects injected?
-        # User wants "List of Dict... id, title, options, answer, analysis, image".
-        # And "Context" logic handled by PPTGenerator?
-        # PPTGenerator handles "context" field in Question object.
-        # But wait, earlier I changed PPTGenerator to handle "type": "context" objects.
-        # "Standardizer" should probably output that format.
-        
-        final_list = []
-        
-        # Group by Context
-        # Since my Questions map stores context string, I can regroup.
-        # Or just emit questions and let PPTGenerator handle "Background (Question X)".
-        # BUT, PPTGenerator's new logic (sequential) expects Context Object -> Question Object.
-        
-        # Sort questions
-        sorted_qs = sorted(self.questions.values(), key=lambda x: int(x['id']) if x['id'].isdigit() else 9999)
-        
-        last_context = None
-        for q in sorted_qs:
-            ctx = q['context']
-            if ctx and ctx != last_context:
-                final_list.append({
-                    "type": "context",
-                    "content": ctx
-                })
-                last_context = ctx
-            
-            final_list.append(q)
-            
-        return final_list
+                        qid = str(item.get("id"))
+                        if qid in q_map:
+                            q_map[qid]["question"] = item.get("question", q_map[qid]["question"])
+                            q_map[qid]["options"] = item.get("options", [])
+        return [q_map[qid] for qid in q_ids]

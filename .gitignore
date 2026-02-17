@@ -3,6 +3,7 @@ __pycache__/
 *.log
 logs/
 config.json
+temp_images/
 extracted_images/
 ~$*.docx
 *.tmp
@@ -10,3 +11,5 @@ extracted_images/
 .vscode/
 .idea/
 output/
+*.docx
+*.pptx

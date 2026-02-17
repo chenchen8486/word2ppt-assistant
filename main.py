@@ -220,7 +220,7 @@ class App(ctk.CTk):
             
             # 2. Standardize & Parse (The new core logic)
             self.append_log("正在解析文档结构与提取内容...")
-            standardizer = Standardizer(file_path, output_image_dir=os.path.join(output_dir, "extracted_images"), llm_client=llm_client)
+            standardizer = Standardizer(file_path, output_image_dir=os.path.join(output_dir, "temp_images"), llm_client=llm_client)
             
             if self.stop_event.is_set(): return
             
