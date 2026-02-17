@@ -68,6 +68,7 @@ word2ppt-assistant/
 ├── utils/              # 工具模块
 │   ├── config_manager.py # 配置管理
 │   └── logger.py       # 日志记录
+├── logs/               # 日志输出目录
 ├── main.py             # 程序入口 (GUI)
 ├── requirements.txt    # 依赖列表
 └── README.md           # 项目说明文档

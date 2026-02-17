@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.log
+logs/
 config.json
 extracted_images/
 ~$*.docx
@@ -9,4 +10,3 @@ extracted_images/
 .vscode/
 .idea/
 output/
-test_data/

@@ -23,7 +23,7 @@ class GuiHandler(logging.Handler):
             except Exception:
                 self.handleError(record)
 
-def setup_logger(name="Exam2PPT", log_file="app.log", level=logging.INFO, gui_callback=None):
+def setup_logger(name="Exam2PPT", log_file="logs/app.log", level=logging.INFO, gui_callback=None):
     """
     Sets up the logger with file and console handlers.
     
