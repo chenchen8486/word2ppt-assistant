@@ -198,7 +198,7 @@ class PPTGenerator:
         run.text = f"Correct Answer: {answer}"
         run.font.bold = True
         run.font.size = Pt(24)
-        run.font.color.rgb = RGBColor(255, 0, 0) # Red
+        run.font.color.rgb = RGBColor(0, 0, 0) # Black (Fixed: Removed Red)
 
         # Add Analysis
         if analysis:
@@ -218,8 +218,9 @@ class PPTGenerator:
     def _add_long_analysis_slides(self, prs, analysis_text, q_id):
         """
         Handles long analysis by splitting into multiple slides.
+        Uses a stricter 300 chars limit per slide to avoid overflow.
         """
-        chunk_size = 500
+        chunk_size = 300 # Reduced from 500
         chunks = [analysis_text[i:i+chunk_size] for i in range(0, len(analysis_text), chunk_size)]
         
         for i, chunk in enumerate(chunks):
@@ -230,7 +231,7 @@ class PPTGenerator:
             title_shape.text = f"Answer {q_id} (Analysis {i+1}/{len(chunks)})"
             if title_shape.text_frame:
                 for p in title_shape.text_frame.paragraphs:
-                    p.font.size = Pt(24)
+                    p.font.size = Pt(24) # Fixed title size
             
             body_shape = slide.placeholders[1]
             tf = body_shape.text_frame
@@ -238,14 +239,14 @@ class PPTGenerator:
             
             p = tf.add_paragraph()
             p.text = chunk
-            p.font.size = Pt(18)
+            p.font.size = Pt(18) # Fixed body size
 
     def _add_context_slides(self, prs, context_text):
         """
         Splits context text into multiple slides if too long.
         """
-        # Heuristic: Reduced to 500 chars to prevent overflow
-        chunk_size = 500
+        # Heuristic: Reduced to 400 chars to prevent overflow
+        chunk_size = 400 
         chunks = [context_text[i:i+chunk_size] for i in range(0, len(context_text), chunk_size)]
         
         total_chunks = len(chunks)
@@ -262,7 +263,7 @@ class PPTGenerator:
             # Reduce title font size
             if title_shape.text_frame:
                 for paragraph in title_shape.text_frame.paragraphs:
-                    paragraph.font.size = Pt(28)
+                    paragraph.font.size = Pt(28) # Fixed title size
             
             body_shape = slide.placeholders[1]
             tf = body_shape.text_frame
@@ -270,7 +271,7 @@ class PPTGenerator:
             
             p = tf.add_paragraph()
             p.text = chunk
-            p.font.size = Pt(18)
+            p.font.size = Pt(18) # Fixed body size
             p.font.color.rgb = RGBColor(50, 50, 50)
             p.alignment = PP_ALIGN.LEFT
 

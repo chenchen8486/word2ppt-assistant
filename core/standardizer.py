@@ -67,13 +67,21 @@ class Standardizer:
         image_count = 0
         self.paragraphs = []
         
+        # Collect all images first to avoid missing any?
+        # No, we need to associate them with paragraphs.
+        # Issue: Question 23 image might be embedded in a way python-docx misses with simple run iteration.
+        # Or it might be floating (anchored).
+        # python-docx doesn't support floating images well.
+        # Let's check paragraph relationships directly.
+        
         for i, para in enumerate(self.doc.paragraphs):
             text = para.text.strip()
             # Basic cleanup
             text = text.replace('\xa0', ' ') 
             
             images = []
-            # Extract images from runs
+            
+            # Method 1: Inline shapes in runs
             for run in para.runs:
                 if 'drawing' in run._element.xml:
                     drawings = run._element.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing')
@@ -82,29 +90,65 @@ class Standardizer:
                         for blip in blips:
                             embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
                             if embed_id:
-                                try:
-                                    image_part = self.doc.part.related_parts[embed_id]
-                                    content_type = image_part.content_type
-                                    ext = 'jpg'
-                                    if 'png' in content_type: ext = 'png'
-                                    elif 'jpeg' in content_type: ext = 'jpg'
-                                    
-                                    filename = f"img_{i}_{image_count}.{ext}"
-                                    path = os.path.join(self.output_image_dir, filename)
-                                    
-                                    with open(path, "wb") as f:
-                                        f.write(image_part.blob)
-                                    
-                                    images.append(path)
-                                    image_count += 1
-                                except Exception as e:
-                                    logger.warning(f"Image extraction failed: {e}")
+                                self._save_image(embed_id, i, images)
+            
+            # Method 2: Check for anchored images (floating) linked to this paragraph
+            # This requires inspecting the paragraph xml for w:drawing that might be anchored
+            # The previous check `if 'drawing' in run._element.xml` covers both inline and anchor if they are inside a run.
+            # Sometimes images are directly in paragraph xml?
+            # Let's check paragraph xml for any blip reference that we missed.
+            
+            # Extract all blip references in the paragraph XML, regardless of where they are
+            blips = para._element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
+            for blip in blips:
+                embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                if embed_id:
+                    # Check if we already extracted this image? 
+                    # We can't easily check by ID if we don't track it.
+                    # But saving it again with same index is fine, we filter duplicates later?
+                    # Or just rely on this global search per paragraph.
+                    # Let's use a set of extracted embed_ids per paragraph to avoid duplicates.
+                    pass 
+
+            # Refined extraction: Use a set to track processed embed_ids for this paragraph
+            processed_embeds = set()
+            all_blips = para._element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
+            for blip in all_blips:
+                embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                if embed_id and embed_id not in processed_embeds:
+                    self._save_image(embed_id, i, images)
+                    processed_embeds.add(embed_id)
 
             self.paragraphs.append({
                 'text': text,
                 'images': images,
                 'original_index': i
             })
+
+    def _save_image(self, embed_id, para_index, images_list):
+        try:
+            image_part = self.doc.part.related_parts[embed_id]
+            content_type = image_part.content_type
+            ext = 'jpg'
+            if 'png' in content_type: ext = 'png'
+            elif 'jpeg' in content_type: ext = 'jpg'
+            elif 'gif' in content_type: ext = 'gif'
+            elif 'bmp' in content_type: ext = 'bmp'
+            
+            # Unique filename
+            # Use embed_id in filename to identify unique images
+            filename = f"img_p{para_index}_{embed_id}.{ext}"
+            path = os.path.join(self.output_image_dir, filename)
+            
+            # Write file
+            with open(path, "wb") as f:
+                f.write(image_part.blob)
+            
+            # Append to list if not already present (check by path)
+            if path not in images_list:
+                images_list.append(path)
+        except Exception as e:
+            logger.warning(f"Image extraction failed for {embed_id}: {e}")
 
     def _filter_content(self):
         start_index = -1
