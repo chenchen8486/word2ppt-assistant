@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.log
+config.json
+extracted_images/
+~$*.docx
+*.tmp
+.DS_Store
+.vscode/
+.idea/
+output/
+test_data/
