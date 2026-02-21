@@ -19,6 +19,9 @@ class DocLoader:
         result = md.convert(self.file_path)
         text_content = result.text_content
 
+        # Clean Text
+        text_content = self._clean_text(text_content)
+
         # 2. Extract Images using zipfile
         image_files = self._extract_images()
         
@@ -32,6 +35,30 @@ class DocLoader:
                 text_content += f"- [{os.path.basename(img_path)}]({rel_path})\n"
                 
         return text_content
+
+    def _clean_text(self, text):
+        """
+        Cleans the extracted text by removing unnecessary headers and footers.
+        """
+        # 1. Remove intro before first major section (e.g. "一、" or "# 一、")
+        # Match pattern: Start of string -> anything -> (newline) -> (# )? -> Chinese number -> Dot/Pause mark
+        # We look for the FIRST occurrence of a major section header
+        match = re.search(r'(^#*\s*[一二三四五六七八九十]+[、．])', text, flags=re.MULTILINE)
+        if match:
+            start_index = match.start()
+            text = text[start_index:]
+            
+        # 2. Remove "【导语】" paragraphs
+        text = re.sub(r'^.*【导语】.*$', '', text, flags=re.MULTILINE)
+        
+        # 3. Remove "参考译文" and everything after
+        # Note: This is a bit aggressive, make sure it's what is wanted.
+        # The requirement says "remove '参考译文' and everything after".
+        match_ref = re.search(r'(参考译文)', text)
+        if match_ref:
+            text = text[:match_ref.start()]
+            
+        return text.strip()
 
     def _extract_images(self):
         """

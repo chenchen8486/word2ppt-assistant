@@ -151,13 +151,16 @@ class App(ctk.CTk):
             chunks = llm_client.chunk_text(markdown_text)
             self.log(f"Document split into {len(chunks)} chunks.")
             
-            full_marp_content = ""
+            marp_chunks_list = []
             for i, chunk in enumerate(chunks):
                 if self.stop_event.is_set(): raise Exception("Process stopped by user.")
                 
                 self.log(f"Processing chunk {i+1}/{len(chunks)}...")
                 marp_chunk = llm_client.generate_marp_content(chunk)
-                full_marp_content += marp_chunk + "\n\n---\n\n"
+                marp_chunks_list.append(marp_chunk)
+            
+            # 使用 join 拼接，确保最后一个块后面没有多余的 --- 
+            full_marp_content = "\n\n---\n\n".join(marp_chunks_list)
             
             # Step 4: Generate PPTX
             self.update_status("Generating PPTX...")
