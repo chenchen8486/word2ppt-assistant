@@ -21,6 +21,7 @@ class App(ctk.CTk):
 
         # Variables
         self.api_key_var = ctk.StringVar()
+        self.model_var = ctk.StringVar(value="deepseek-chat")
         self.file_path_var = ctk.StringVar()
         self.status_var = ctk.StringVar(value="Ready")
         self.is_processing = False
@@ -43,32 +44,37 @@ class App(ctk.CTk):
     def create_widgets(self):
         # Grid configuration
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(4, weight=1)
+        self.grid_rowconfigure(5, weight=1)
 
         # 1. API Key Section
         ctk.CTkLabel(self, text="DeepSeek API Key:").grid(row=0, column=0, padx=20, pady=10, sticky="w")
         self.api_key_entry = ctk.CTkEntry(self, textvariable=self.api_key_var, width=400, show="*")
         self.api_key_entry.grid(row=0, column=1, padx=20, pady=10, sticky="ew")
 
+        # 1.5 Model Selection Section
+        ctk.CTkLabel(self, text="Select Model:").grid(row=1, column=0, padx=20, pady=10, sticky="w")
+        self.model_combo = ctk.CTkComboBox(self, variable=self.model_var, values=["deepseek-chat", "deepseek-reasoner"], width=400)
+        self.model_combo.grid(row=1, column=1, padx=20, pady=10, sticky="ew")
+
         # 2. File Selection Section
-        ctk.CTkLabel(self, text="Select Word File:").grid(row=1, column=0, padx=20, pady=10, sticky="w")
+        ctk.CTkLabel(self, text="Select Word File:").grid(row=2, column=0, padx=20, pady=10, sticky="w")
         self.file_entry = ctk.CTkEntry(self, textvariable=self.file_path_var, width=400)
-        self.file_entry.grid(row=1, column=1, padx=20, pady=10, sticky="ew")
-        ctk.CTkButton(self, text="Browse", command=self.browse_file).grid(row=1, column=2, padx=20, pady=10)
+        self.file_entry.grid(row=2, column=1, padx=20, pady=10, sticky="ew")
+        ctk.CTkButton(self, text="Browse", command=self.browse_file).grid(row=2, column=2, padx=20, pady=10)
 
         # 3. Action Buttons
         self.start_btn = ctk.CTkButton(self, text="Start Conversion", command=self.start_thread, fg_color="green")
-        self.start_btn.grid(row=2, column=1, padx=20, pady=20, sticky="ew")
+        self.start_btn.grid(row=3, column=1, padx=20, pady=20, sticky="ew")
         
         self.stop_btn = ctk.CTkButton(self, text="Stop", command=self.stop_process, fg_color="red", state="disabled")
-        self.stop_btn.grid(row=2, column=2, padx=20, pady=20)
+        self.stop_btn.grid(row=3, column=2, padx=20, pady=20)
 
         # 4. Progress/Status
-        ctk.CTkLabel(self, textvariable=self.status_var).grid(row=3, column=0, columnspan=3, padx=20, pady=5)
+        ctk.CTkLabel(self, textvariable=self.status_var).grid(row=4, column=0, columnspan=3, padx=20, pady=5)
 
         # 5. Log Console
         self.log_box = ctk.CTkTextbox(self, height=300)
-        self.log_box.grid(row=4, column=0, columnspan=3, padx=20, pady=10, sticky="nsew")
+        self.log_box.grid(row=5, column=0, columnspan=3, padx=20, pady=10, sticky="nsew")
         self.log_box.configure(state="disabled")
 
     def browse_file(self):
@@ -125,6 +131,7 @@ class App(ctk.CTk):
     def run_conversion(self):
         try:
             api_key = self.api_key_var.get()
+            model = self.model_var.get()
             file_path = self.file_path_var.get()
             
             # Step 1: Check Environment (Marp)
@@ -146,8 +153,14 @@ class App(ctk.CTk):
             if self.stop_event.is_set(): raise Exception("Process stopped by user.")
 
             # Step 3: LLM Processing
-            self.update_status("Processing with LLM...")
-            llm_client = LLMClient(api_key)
+            self.update_status(f"Processing with LLM ({model})...")
+            # 修复：将 GUI 显示名称映射为真实的模型 ID
+            MODEL_MAPPING = {
+                "deepseek-chat": "deepseek-chat",
+                "deepseek-reasoner": "deepseek-reasoner"
+            }
+            model_id = MODEL_MAPPING.get(model, "deepseek-chat")
+            llm_client = LLMClient(api_key, model=model_id)
             chunks = llm_client.chunk_text(markdown_text)
             self.log(f"Document split into {len(chunks)} chunks.")
             
@@ -159,7 +172,7 @@ class App(ctk.CTk):
                 marp_chunk = llm_client.generate_marp_content(chunk)
                 marp_chunks_list.append(marp_chunk)
             
-            # 使用 join 拼接，确保最后一个块后面没有多余的 --- 
+            # 修复：使用 join 拼接，确保最后一个块后面没有多余的 --- 
             full_marp_content = "\n\n---\n\n".join(marp_chunks_list)
             
             # Step 4: Generate PPTX

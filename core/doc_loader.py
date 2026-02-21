@@ -40,23 +40,18 @@ class DocLoader:
         """
         Cleans the extracted text by removing unnecessary headers and footers.
         """
-        # 1. Remove intro before first major section (e.g. "一、" or "# 一、")
-        # Match pattern: Start of string -> anything -> (newline) -> (# )? -> Chinese number -> Dot/Pause mark
-        # We look for the FIRST occurrence of a major section header
-        match = re.search(r'(^#*\s*[一二三四五六七八九十]+[、．])', text, flags=re.MULTILINE)
+        # 1. 兼容带有加粗符号的第一个大题标题 (如 **一、**)
+        match = re.search(r'(^#*\s*[*]*[一二三四五六七八九十]+[、．])', text, flags=re.MULTILINE)
         if match:
             start_index = match.start()
             text = text[start_index:]
             
-        # 2. Remove "【导语】" paragraphs
+        # 2. 移除 "【导语】" 段落
         text = re.sub(r'^.*【导语】.*$', '', text, flags=re.MULTILINE)
         
-        # 3. Remove "参考译文" and everything after
-        # Note: This is a bit aggressive, make sure it's what is wanted.
-        # The requirement says "remove '参考译文' and everything after".
-        match_ref = re.search(r'(参考译文)', text)
-        if match_ref:
-            text = text[:match_ref.start()]
+        # 3. 智能移除“参考译文”区块 (修复吃掉下半张试卷的Bug，兼容 [*]*)
+        pattern_ref = r'参考译文.*?(?=\n#*\s*[*]*[一二三四五六七八九十]+[、．]|\n#*\s*[*]*第[一二三四五六七八九十ⅠⅡIIIIVV]+卷|$)'
+        text = re.sub(pattern_ref, '', text, flags=re.DOTALL)
             
         return text.strip()
 
