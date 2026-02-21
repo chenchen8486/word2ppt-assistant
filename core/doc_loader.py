@@ -1,145 +1,75 @@
 import os
+import zipfile
 import re
-import docx
-from utils.logger import get_logger
-
-logger = get_logger()
+from markitdown import MarkItDown
 
 class DocLoader:
-    """
-    Handles loading and structural chunking of Word documents (.docx).
-    """
     def __init__(self, file_path):
         self.file_path = file_path
-        self.paragraphs = []
-        self.full_text = ""
-        self.total_questions_detected = 0 # Watchdog counter
+        self.temp_images_dir = "temp_images"
+        os.makedirs(self.temp_images_dir, exist_ok=True)
 
-    def load(self):
+    def load_document(self):
         """
-        Loads the .docx file and extracts text from paragraphs.
+        Loads the document, extracts text using MarkItDown, and extracts images using zipfile.
+        Returns the markdown text with appended image references.
         """
-        if not os.path.exists(self.file_path):
-            error_msg = f"File not found: {self.file_path}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
+        # 1. Extract Text using MarkItDown
+        md = MarkItDown()
+        result = md.convert(self.file_path)
+        text_content = result.text_content
 
+        # 2. Extract Images using zipfile
+        image_files = self._extract_images()
+        
+        # 3. Append Image References to Text
+        # We append a list of available images at the end so LLM knows what images exist.
+        if image_files:
+            text_content += "\n\n## Available Images\n"
+            for img_path in image_files:
+                # Use forward slashes for compatibility
+                rel_path = img_path.replace("\\", "/")
+                text_content += f"- [{os.path.basename(img_path)}]({rel_path})\n"
+                
+        return text_content
+
+    def _extract_images(self):
+        """
+        Extracts images from the .docx file (which is a zip) to temp_images directory.
+        Returns a list of paths to the extracted images.
+        """
+        image_paths = []
         try:
-            logger.info(f"Loading document: {self.file_path}")
-            doc = docx.Document(self.file_path)
+            with zipfile.ZipFile(self.file_path, 'r') as zip_ref:
+                # Word stores images in word/media/ folder
+                for file_info in zip_ref.infolist():
+                    if file_info.filename.startswith('word/media/') and file_info.file_size > 0:
+                        # Extract the file
+                        # We want to flatten the structure or keep it simple
+                        original_filename = os.path.basename(file_info.filename)
+                        target_path = os.path.join(self.temp_images_dir, original_filename)
+                        
+                        # Write the file content
+                        with open(target_path, 'wb') as f:
+                            f.write(zip_ref.read(file_info))
+                        
+                        image_paths.append(target_path)
+                        
+            # Sort images to maintain order (usually image1.png, image2.png etc.)
+            # This helps if we want to guess their position, though without context it's hard.
+            # But the requirement says "append to end for LLM reference".
+            image_paths.sort(key=lambda x: self._natural_sort_key(os.path.basename(x)))
             
-            # Extract text from paragraphs, skipping empty ones
-            self.paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-            self.full_text = "\n".join(self.paragraphs)
-            
-            # Pre-scan for question numbers (Watchdog Input Counter)
-            self._count_questions()
-            
-            logger.info(f"Successfully loaded document. Total paragraphs: {len(self.paragraphs)}")
-            return True
+        except zipfile.BadZipFile:
+            print(f"Error: {self.file_path} is not a valid zip/docx file.")
         except Exception as e:
-            logger.error(f"Failed to load document: {e}")
-            raise
+            print(f"Error extracting images: {e}")
+            
+        return image_paths
 
-    def _count_questions(self):
+    def _natural_sort_key(self, s):
         """
-        Estimates total number of questions using Regex.
-        Matches patterns like: "1.", "2.", "Question 1", "(1)", "【1】"
+        Sorts strings containing numbers naturally (image1, image2, image10 instead of image1, image10, image2).
         """
-        # Regex patterns for common question starts
-        patterns = [
-            r'^\d+\.',           # 1.
-            r'^Question\s+\d+',  # Question 1
-            r'^\(\d+\)',         # (1)
-            r'^【\d+】',         # 【1】
-            r'^第\d+题'          # 第1题
-        ]
-        
-        # Pattern for Big Question Titles (e.g. "一、选择题 (30分)")
-        # We want to ignore these when counting actual questions
-        big_question_pattern = r'^[一二三四五六七八九十]+、'
-
-        count = 0
-        for p in self.paragraphs:
-            # Skip Big Question Titles
-            if re.match(big_question_pattern, p):
-                continue
-                
-            for pat in patterns:
-                if re.match(pat, p):
-                    count += 1
-                    break
-        
-        self.total_questions_detected = count
-        logger.info(f"[Watchdog] Estimated total questions in doc: {count}")
-
-    def get_chunks(self, max_chars=3000):
-        """
-        Yields structural chunks based on question boundaries.
-        Prevents splitting a single question into two chunks.
-        """
-        if not self.paragraphs:
-            self.load()
-
-        current_chunk = []
-        current_length = 0
-        chunk_index = 1
-        
-        # Regex to detect start of a new question
-        question_start_pattern = re.compile(r'^\d+\.|^Question\s+\d+|^\(\d+\)|^【\d+】|^第\d+题')
-        
-        # Regex for Big Question Titles (Context)
-        # e.g., "一、阅读理解(20分)", "二、选择题"
-        big_context_pattern = re.compile(r'^[一二三四五六七八九十]+、')
-
-        i = 0
-        while i < len(self.paragraphs):
-            para = self.paragraphs[i]
-            para_len = len(para)
-            is_new_question = bool(question_start_pattern.match(para))
-            is_big_context = bool(big_context_pattern.match(para))
-
-            # Strategy:
-            # 1. If it's a Big Context (e.g. "一、..."), it usually starts a new section.
-            #    We should probably start a new chunk to keep context with its questions,
-            #    UNLESS the current chunk is very small.
-            # 2. If it's a new question ("1."), we check length.
-            
-            should_split = False
-            
-            # Priority Split: Big Context
-            # If we hit "二、...", and we have pending questions, split now.
-            if is_big_context and current_chunk:
-                should_split = True
-            
-            # Regular Split: Length limit reached + Safe break point
-            elif current_length > max_chars:
-                if is_new_question:
-                    should_split = True
-                elif current_length > max_chars * 1.5:
-                    # Forced split protection
-                    should_split = True
-                    logger.warning(f"Chunk #{chunk_index} forced split due to excessive length (no question break found).")
-
-            if should_split and current_chunk:
-                chunk_text = "\n".join(current_chunk)
-                logger.info(f"Generated Structural Chunk #{chunk_index} (Length: {len(chunk_text)})")
-                yield chunk_text
-                
-                chunk_index += 1
-                current_chunk = []
-                current_length = 0
-            
-            current_chunk.append(para)
-            current_length += para_len
-            i += 1
-            
-        # Yield the last chunk
-        if current_chunk:
-            chunk_text = "\n".join(current_chunk)
-            logger.info(f"Generated Structural Chunk #{chunk_index} (Length: {len(chunk_text)})")
-            yield chunk_text
-
-if __name__ == "__main__":
-    # Test block
-    pass
+        return [int(text) if text.isdigit() else text.lower()
+                for text in re.split('([0-9]+)', s)]
