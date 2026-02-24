@@ -57,12 +57,12 @@ class PPTGenerator:
             mode = ""
             for line in block.splitlines():
                 if line.startswith("TITLE:"):
-                    title = line[len("TITLE:"):].strip()
+                    title = line[len("TITLE:"):].strip().replace("\\_", "_")
                     mode = ""
                     continue
                 if line.startswith("BODY:"):
                     mode = "body"
-                    content = line[len("BODY:"):].lstrip()
+                    content = line[len("BODY:"):].lstrip().replace("\\_", "_")
                     if content:
                         body_lines.append(content)
                     continue
@@ -71,7 +71,7 @@ class PPTGenerator:
                     mode = ""
                     continue
                 if mode == "body":
-                    body_lines.append(line)
+                    body_lines.append(line.replace("\\_", "_"))
             body = "\n".join(body_lines).strip()
             if not title and body:
                 first_line = body.splitlines()[0] if body.splitlines() else ""
