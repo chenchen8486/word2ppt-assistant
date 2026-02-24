@@ -161,6 +161,20 @@ class App(ctk.CTk):
                 structured_chunks_list.append(structured_chunk)
             
             structured_text = "\n\n".join(structured_chunks_list)
+
+            self.update_status("Reorganizing Slides...")
+            self.log("Reorganizing slides to ensure Question-Answer adjacency...")
+            try:
+                structured_text, reorg_info = llm_client.reorganize_slides(structured_text)
+                self.log(
+                    "Slides reorganization completed. "
+                    f"slides={reorg_info.get('slides')}, "
+                    f"moved={reorg_info.get('moved')}, "
+                    f"reason={reorg_info.get('reason')}"
+                )
+            except Exception as e:
+                self.log(f"Warning: Reorganization failed, using original order. Error: {e}")
+
             structured_output = os.path.join(
                 os.getcwd(),
                 f"{os.path.splitext(os.path.basename(file_path))[0]}_structured.txt"

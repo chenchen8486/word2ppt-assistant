@@ -89,6 +89,94 @@ class LLMClient:
                 else:
                     return f"\n\n{chunk_text}"
 
+    def reorganize_slides(self, structured_text):
+        if not structured_text:
+            return structured_text, {"reason": "empty", "moved": 0, "slides": 0}
+        blocks = re.findall(r"\[\[SLIDE\]\]([\s\S]*?)\[\[/SLIDE\]\]", structured_text)
+        if not blocks:
+            return structured_text, {"reason": "no_slides", "moved": 0, "slides": 0}
+
+        def parse_block(block):
+            title = ""
+            body_lines = []
+            mode = ""
+            for line in block.splitlines():
+                if line.startswith("TITLE:"):
+                    title = line[len("TITLE:"):].strip()
+                    mode = ""
+                    continue
+                if line.startswith("BODY:"):
+                    mode = "body"
+                    content = line[len("BODY:"):].lstrip()
+                    if content:
+                        body_lines.append(content)
+                    continue
+                if line.startswith("IMAGE:"):
+                    mode = ""
+                    continue
+                if mode == "body":
+                    body_lines.append(line)
+            body = "\n".join(body_lines).strip()
+            return title, body
+
+        def extract_qnum(title, body):
+            match = re.search(r"第\s*([0-9]+)\s*题", title)
+            if match:
+                return match.group(1)
+            match = re.search(r"^([0-9]+)\.", body, flags=re.MULTILINE)
+            if match:
+                return match.group(1)
+            match = re.search(r"【答案】\s*([0-9]+)\.", body)
+            if match:
+                return match.group(1)
+            return None
+
+        def is_answer_slide(title, body):
+            if "答案" in title or "解析" in title:
+                return True
+            if "【答案】" in body:
+                return True
+            return False
+
+        slides = []
+        for idx, block in enumerate(blocks):
+            title, body = parse_block(block)
+            qnum = extract_qnum(title, body)
+            slides.append(
+                {
+                    "idx": idx,
+                    "qnum": qnum,
+                    "is_answer": is_answer_slide(title, body),
+                    "raw": f"[[SLIDE]]{block}[[/SLIDE]]"
+                }
+            )
+
+        last_question_index = {}
+        answer_by_qnum = {}
+        for slide in slides:
+            qnum = slide["qnum"]
+            if not qnum:
+                continue
+            if slide["is_answer"]:
+                answer_by_qnum.setdefault(qnum, []).append(slide)
+            else:
+                last_question_index[qnum] = slide["idx"]
+
+        output_blocks = []
+        moved = 0
+        for slide in slides:
+            qnum = slide["qnum"]
+            if qnum and slide["is_answer"] and qnum in last_question_index:
+                moved += 1
+                continue
+            output_blocks.append(slide["raw"])
+            if qnum and qnum in last_question_index and slide["idx"] == last_question_index[qnum]:
+                for ans in answer_by_qnum.get(qnum, []):
+                    output_blocks.append(ans["raw"])
+
+        reorganized_text = "\n\n".join(output_blocks).strip()
+        return reorganized_text, {"reason": "rule_based", "moved": moved, "slides": len(slides)}
+
     def generate_structured_content(self, chunk_text, system_prompt=None):
         import time
         if not system_prompt:
@@ -106,10 +194,11 @@ IMAGE: temp_images/xxx.png
 3. 每道小题必须分成两类组合：
    - 题目组合：只包含题目与选项（如有），不得包含答案与解析。
    - 答案解析组合：只包含答案与解析，不得包含题目与选项。
-4. 题目组合过长可拆分多张；答案解析组合过长也可拆分多张，但两类内容不能混在同一个 [[SLIDE]] 中。
-5. 如果文本中提到图片（如 [image1.png]），放在 IMAGE 行，路径使用 temp_images/image1.png。
-6. BODY 允许多行，允许使用 - 开头的条目。
-7. 只输出上述格式内容，不要输出其它说明或代码块标记。
+4. 顺序强制：同一道小题的题目组合必须立即跟随其答案解析组合，不允许先输出其他题目。
+5. 题目组合过长可拆分多张；答案解析组合过长也可拆分多张，但两类内容不能混在同一个 [[SLIDE]] 中。
+6. 如果文本中提到图片（如 [image1.png]），放在 IMAGE 行，路径使用 temp_images/image1.png。
+7. BODY 允许多行，允许使用 - 开头的条目。
+8. 只输出上述格式内容，不要输出其它说明或代码块标记。
 """
         max_retries = 3
         for attempt in range(max_retries):
