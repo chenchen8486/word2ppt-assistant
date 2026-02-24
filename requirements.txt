@@ -2,3 +2,4 @@ customtkinter
 markitdown[docx]
 openai
 requests
+python-pptx

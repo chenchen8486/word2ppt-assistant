@@ -6,7 +6,6 @@ import customtkinter as ctk
 from core.doc_loader import DocLoader
 from core.llm_client import LLMClient
 from core.ppt_generator import PPTGenerator
-from utils.marp_manager import MarpManager
 
 # Set theme
 ctk.set_appearance_mode("System")
@@ -134,16 +133,6 @@ class App(ctk.CTk):
             model = self.model_var.get()
             file_path = self.file_path_var.get()
             
-            # Step 1: Check Environment (Marp)
-            self.update_status("Checking Environment...")
-            self.log("Checking Marp CLI...")
-            marp_manager = MarpManager()
-            marp_exe = marp_manager.ensure_marp_cli() 
-            self.log(f"Marp CLI ready: {marp_exe}")
-
-            if self.stop_event.is_set(): raise Exception("Process stopped by user.")
-
-            # Step 2: Load Document
             self.update_status("Loading Document...")
             self.log(f"Loading document: {file_path}")
             loader = DocLoader(file_path)
@@ -152,7 +141,6 @@ class App(ctk.CTk):
             
             if self.stop_event.is_set(): raise Exception("Process stopped by user.")
 
-            # Step 3: LLM Processing
             self.update_status(f"Processing with LLM ({model})...")
             # 修复：将 GUI 显示名称映射为真实的模型 ID
             MODEL_MAPPING = {
@@ -164,28 +152,34 @@ class App(ctk.CTk):
             chunks = llm_client.chunk_text(markdown_text)
             self.log(f"Document split into {len(chunks)} chunks.")
             
-            marp_chunks_list = []
+            structured_chunks_list = []
             for i, chunk in enumerate(chunks):
                 if self.stop_event.is_set(): raise Exception("Process stopped by user.")
                 
                 self.log(f"Processing chunk {i+1}/{len(chunks)}...")
-                marp_chunk = llm_client.generate_marp_content(chunk)
-                marp_chunks_list.append(marp_chunk)
+                structured_chunk = llm_client.generate_structured_content(chunk)
+                structured_chunks_list.append(structured_chunk)
             
-            # 修复：使用 join 拼接，确保最后一个块后面没有多余的 --- 
-            full_marp_content = "\n\n---\n\n".join(marp_chunks_list)
+            structured_text = "\n\n".join(structured_chunks_list)
+            structured_output = os.path.join(
+                os.getcwd(),
+                f"{os.path.splitext(os.path.basename(file_path))[0]}_structured.txt"
+            )
+            with open(structured_output, "w", encoding="utf-8") as f:
+                f.write(structured_text)
+            self.log(f"Structured draft saved to: {structured_output}")
             
-            # Step 4: Generate PPTX
             self.update_status("Generating PPTX...")
-            self.log("Generating PPTX file...")
+            self.log("Generating editable PPTX...")
             
             output_file = os.path.splitext(file_path)[0] + "_converted.pptx"
             generator = PPTGenerator()
             
-            success, msg = generator.generate_pptx(full_marp_content, output_file)
+            success, final_path, msg = generator.generate_pptx(structured_text, output_file)
             
             if success:
-                self.log(f"Success! PPTX saved to: {output_file}")
+                self.log(msg)
+                self.log(f"Success! PPTX saved to: {final_path}")
                 self.update_status("Completed Successfully")
             else:
                 self.log(f"Failed to generate PPTX: {msg}")

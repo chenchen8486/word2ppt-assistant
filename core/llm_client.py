@@ -88,3 +88,51 @@ class LLMClient:
                     time.sleep(2)
                 else:
                     return f"\n\n{chunk_text}"
+
+    def generate_structured_content(self, chunk_text, system_prompt=None):
+        import time
+        if not system_prompt:
+            system_prompt = """
+你是一个顶级的教育课件结构化编辑。请将用户输入的试卷内容改写为严格结构化的幻灯片草稿，必须使用以下格式，禁止输出其它任何文字：
+[[SLIDE]]
+TITLE: 标题文本
+BODY:
+正文文本或多行内容
+IMAGE: temp_images/xxx.png
+[[/SLIDE]]
+要求：
+1. 保留原文所有文字，不得总结省略。
+2. 每张幻灯片纯文本不超过 250 字，超出需拆分多张。
+3. 每道小题必须分成两类组合：
+   - 题目组合：只包含题目与选项（如有），不得包含答案与解析。
+   - 答案解析组合：只包含答案与解析，不得包含题目与选项。
+4. 题目组合过长可拆分多张；答案解析组合过长也可拆分多张，但两类内容不能混在同一个 [[SLIDE]] 中。
+5. 如果文本中提到图片（如 [image1.png]），放在 IMAGE 行，路径使用 temp_images/image1.png。
+6. BODY 允许多行，允许使用 - 开头的条目。
+7. 只输出上述格式内容，不要输出其它说明或代码块标记。
+"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": chunk_text}
+                    ],
+                    stream=False
+                )
+                content = response.choices[0].message.content.strip()
+                if content.startswith("```markdown"):
+                    content = content[11:].strip()
+                elif content.startswith("```"):
+                    content = content[3:].strip()
+                if content.endswith("```"):
+                    content = content[:-3].strip()
+                return content
+            except Exception as e:
+                print(f"Error calling LLM (Attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                else:
+                    return f"\n\n{chunk_text}"
