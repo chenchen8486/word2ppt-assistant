@@ -169,8 +169,31 @@ D. 错误选项
             async with session.post(self.base_url + "/chat/completions", json=payload, headers=headers) as response:
                 result = await response.json()
 
-                # 解析 LLM 返回的内容
-                content = result['choices'][0]['message']['content']
+                # 根据不同的模型类型解析响应
+                content = None
+
+                if self.model_name == "qwen":
+                    # 阿里云通义千问的响应格式
+                    if 'output' in result and 'choices' in result['output']:
+                        content = result['output']['choices'][0].get('message', {}).get('content', '')
+                    elif 'result' in result:
+                        content = result['result']
+                else:
+                    # DeepSeek 或其他兼容 OpenAI 格式的模型
+                    if 'choices' in result and len(result['choices']) > 0:
+                        content = result['choices'][0]['message']['content']
+                    else:
+                        # 尝试不同的响应格式
+                        if 'data' in result and 'choices' in result['data']:
+                            content = result['data']['choices'][0]['message']['content']
+                        elif 'response' in result:
+                            content = result['response']
+
+                if content is None:
+                    return {
+                        "error": f"Unable to parse API response: {result}",
+                        "original_chunk": chunk
+                    }
 
                 # 尝试解析 JSON
                 try:
@@ -178,6 +201,9 @@ D. 错误选项
                     content_cleaned = content.strip()
                     if content_cleaned.startswith('```json'):
                         content_cleaned = content_cleaned[7:]  # 移除 ```json
+                    elif content_cleaned.startswith('```'):
+                        content_cleaned = content_cleaned[3:]   # 移除 ```
+
                     if content_cleaned.endswith('```'):
                         content_cleaned = content_cleaned[:-3]  # 移除 ```
 

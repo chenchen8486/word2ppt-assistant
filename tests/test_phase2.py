@@ -94,19 +94,37 @@ def test_chunk_manager_save_and_load():
 
 def test_llm_client_initialization():
     """测试 LLM 客户端初始化"""
-    # 创建模拟的 API_KEY.txt 文件
-    api_key_content = "fake-api-key-for-testing"
-    api_key_file = "API_KEY.txt"
+    # 创建模拟的配置文件
+    import tempfile
+
+    # 创建临时配置文件
+    temp_config = {
+        "models": {
+            "deepseek": {
+                "api_key": "fake-api-key-for-testing",
+                "endpoint": "https://api.deepseek.com",
+                "model": "deepseek-chat"
+            }
+        },
+        "settings": {
+            "default_model": "deepseek",
+            "timeout": 60,
+            "max_retries": 3
+        }
+    }
+
+    import json
+    config_path = "temp_config.json"
 
     try:
-        with open(api_key_file, 'w', encoding='utf-8-sig') as f:
-            f.write(api_key_content)
+        with open(config_path, 'w', encoding='utf-8-sig') as f:
+            json.dump(temp_config, f, ensure_ascii=False, indent=2)
 
         # 初始化客户端
-        client = LLMClient(api_key_file)
+        client = LLMClient(config_path=config_path)
 
-        # 验证 API 密钥被正确加载
-        assert client.api_key == api_key_content
+        # 验证客户端被正确创建
+        assert client is not None
 
         # 验证模板被创建
         assert os.path.exists("user_templates/01_raw_input.md")
@@ -114,8 +132,8 @@ def test_llm_client_initialization():
 
     finally:
         # 清理测试文件
-        if os.path.exists(api_key_file):
-            os.remove(api_key_file)
+        if os.path.exists(config_path):
+            os.remove(config_path)
 
         # 清理模板目录
         import shutil

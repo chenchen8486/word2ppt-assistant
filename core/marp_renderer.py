@@ -238,16 +238,43 @@ section {
         markdown_content = self.marp_header
 
         # 遍历 JSON 数组，按顺序渲染
-        for item in extracted_data:
-            item_type = item.get('type', '').lower()
+        # 注意：extracted_data 中的每一项可能是一个列表（来自一个 chunk 的多个项目）
+        for item_or_list in extracted_data:
+            if isinstance(item_or_list, list):
+                # 如果是列表，说明是单个 chunk 的结果，遍历其中的每个项目
+                for item in item_or_list:
+                    # 检查是否是错误项
+                    if isinstance(item, dict) and 'error' in item:
+                        error_msg = item.get('error', 'Unknown error')
+                        original_content = item.get('original_chunk', {}).get('content', '')[:200]  # 只取前200字符
+                        markdown_content += f"\n<!-- 处理错误: {error_msg} -->\n<div class=\"context-text\">原始内容片段: {original_content}...</div>\n"
+                        continue
 
-            if item_type == 'context':
-                markdown_content += f"\n{self._render_context(item)}\n"
-            elif item_type == 'question':
-                markdown_content += f"\n{self._render_question(item)}\n"
-            else:
-                # 未知类型，尝试作为题目处理
-                markdown_content += f"\n{self._render_question(item)}\n"
+                    if isinstance(item, dict):
+                        item_type = item.get('type', '').lower()
+                        if item_type == 'context':
+                            markdown_content += f"\n{self._render_context(item)}\n"
+                        elif item_type == 'question':
+                            markdown_content += f"\n{self._render_question(item)}\n"
+                        else:
+                            # 未知类型，尝试作为题目处理
+                            markdown_content += f"\n{self._render_question(item)}\n"
+            elif isinstance(item_or_list, dict):
+                # 如果是字典，检查是否是错误项
+                if 'error' in item_or_list:
+                    error_msg = item_or_list.get('error', 'Unknown error')
+                    original_content = item_or_list.get('original_chunk', {}).get('content', '')[:200]  # 只取前200字符
+                    markdown_content += f"\n<!-- 处理错误: {error_msg} -->\n<div class=\"context-text\">原始内容片段: {original_content}...</div>\n"
+                    continue
+
+                item_type = item_or_list.get('type', '').lower()
+                if item_type == 'context':
+                    markdown_content += f"\n{self._render_context(item_or_list)}\n"
+                elif item_type == 'question':
+                    markdown_content += f"\n{self._render_question(item_or_list)}\n"
+                else:
+                    # 未知类型，尝试作为题目处理
+                    markdown_content += f"\n{self._render_question(item_or_list)}\n"
 
         return markdown_content
 
@@ -300,12 +327,19 @@ section {
         file_name = Path(markdown_file_path).stem.replace('_final', '')
         output_path = Path(output_dir) / f"{file_name}.pptx"
 
-        # 查找 marp 工具
+        # 首先尝试使用本地的 marp.exe
         marp_path = "bin/marp.exe"
 
-        # 如果没有在 bin 目录找到，则尝试全局安装
+        # 如果本地 marp.exe 不存在，尝试全局安装的 marp
         if not Path(marp_path).exists():
-            marp_path = "marp"
+            # 尝试在 PATH 中查找 marp
+            import shutil
+            global_marp = shutil.which("marp")
+            if global_marp:
+                marp_path = global_marp
+            else:
+                print(f"错误：找不到 Marp 工具。请确保已安装 marp 或将 bin/marp.exe 放在正确位置。")
+                return None
 
         # 调用 marp 命令行工具
         cmd = [
@@ -321,8 +355,11 @@ section {
             return str(output_path)
         except subprocess.CalledProcessError as e:
             print(f"Marp 转换失败: {e}")
+            print(f"命令: {' '.join(cmd)}")
             print(f"错误输出: {e.stderr}")
+            print(f"标准输出: {e.stdout}")
             return None
         except FileNotFoundError:
-            print(f"找不到 Marp 工具，请确保已安装并添加到 PATH 或放在 bin/ 目录下")
+            print(f"错误：找不到 Marp 工具: {marp_path}")
+            print("请确保已安装并添加到 PATH 或放在 bin/ 目录下")
             return None

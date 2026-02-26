@@ -19,14 +19,6 @@ class Word2PPTApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # 首先检查并安装依赖
-        self.log_message("正在检查依赖...")
-        try:
-            ensure_dependencies()
-        except Exception as e:
-            self.log_message(f"依赖检查失败: {str(e)}")
-            # 即使依赖安装失败也要继续，让用户手动解决
-
         # 配置窗口
         self.title("Word2PPT Assistant - Word文档转PPT工具")
         self.geometry("1000x700")
@@ -40,6 +32,18 @@ class Word2PPTApp(ctk.CTk):
 
         # 初始化批量处理器（稍后在开始转换时指定模型）
         self.processor = None
+
+        # 日志队列，用于线程安全更新
+        self.log_queue = queue.Queue()
+
+        # 首先检查并安装依赖
+        print("正在检查依赖...")  # 使用 print 而不是 log_message，因为在 setup_ui 之前
+        try:
+            ensure_dependencies()
+        except Exception as e:
+            print(f"依赖检查失败: {str(e)}")
+            # 即使依赖安装失败也要继续，让用户手动解决
+
         self.setup_ui()
 
     def setup_ui(self):

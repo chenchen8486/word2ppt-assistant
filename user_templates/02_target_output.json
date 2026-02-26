@@ -1,0 +1,16 @@
+﻿[
+  {
+    "type": "question",
+    "number": "1",
+    "content": "下列选项中，哪一个是正确的？\nA. 错误选项\nB. 正确选项\nC. 错误选项\nD. 错误选项",
+    "answer": "B",
+    "analysis": "根据题意分析，正确答案是 B。"
+  },
+  {
+    "type": "question",
+    "number": "2",
+    "content": "这是一道填空题\n在____处填写答案。",
+    "answer": "适当答案",
+    "analysis": "根据上下文，应该填入相应内容。"
+  }
+]
