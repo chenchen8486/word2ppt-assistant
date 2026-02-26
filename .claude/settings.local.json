@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__tavily-search__search",
+      "mcp__tavily-search__extract",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
