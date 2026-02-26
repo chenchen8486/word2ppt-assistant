@@ -8,11 +8,11 @@
 - 存放用户待转换的批量 `.docx` 文件
 
 ### `data/02_temp_build/`
-- 存放所有中间产物，主要包括：
-  - `{filename}_raw.md` - 解析出的原始 Markdown 内容
-  - `{filename}_chunks.json` - 分块后的结构化文档（重要的中间结果）
-  - `{filename}_extracted.json` - LLM 提取的结构化数据（重要的中间结果）
-  - `{filename}_final.md` - 最终的 Marp 语法文件
+- 存放所有中间产物，按处理顺序编号：
+  - `01_{filename}_raw.md` - 解析出的原始 Markdown 内容（第一步）
+  - `02_{filename}_chunks.json` - 分块后的结构化文档（第二步，重要的中间结果）
+  - `03_{filename}_extracted.json` - LLM 提取的结构化数据（第三步，重要的中间结果）
+  - `04_{filename}_final.md` - 最终的 Marp 语法文件（第四步）
   - `{filename}_images/` - 从文档中提取的图片
 
 ### `data/03_output_pptx/`
