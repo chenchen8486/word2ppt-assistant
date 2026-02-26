@@ -5,6 +5,7 @@ import aiohttp
 from pathlib import Path
 from typing import List, Dict, Any
 from utils.file_helper import initialize_directories
+from utils.config_manager import ConfigManager
 
 
 class LLMClient:
@@ -13,9 +14,17 @@ class LLMClient:
     用于与 LLM 进行交互，提取结构化数据
     """
 
-    def __init__(self, api_key_file: str = "API_KEY.txt"):
-        self.api_key = self._load_api_key(api_key_file)
-        self.base_url = "https://api.deepseek.com"  # 默认使用 DeepSeek API
+    def __init__(self, model_name: str = None, config_path: str = "config.json"):
+        self.config_manager = ConfigManager(config_path)
+        self.model_name = model_name or self.config_manager.get_default_model()
+        self.api_key = self.config_manager.get_api_key(self.model_name)
+
+        if not self.api_key:
+            raise ValueError(f"No API key configured for model: {self.model_name}")
+
+        model_config = self.config_manager.get_model_config(self.model_name)
+        self.base_url = model_config.get('endpoint', 'https://api.deepseek.com')
+        self.model = model_config.get('model', 'deepseek-chat')
 
     def _load_api_key(self, api_key_file: str) -> str:
         """
@@ -143,7 +152,7 @@ D. 错误选项
 
         # 请求数据
         payload = {
-            "model": "deepseek-chat",  # 使用 DeepSeek 模型
+            "model": self.model,  # 使用配置中的模型
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}

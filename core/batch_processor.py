@@ -15,9 +15,10 @@ class BatchProcessor:
     扫描输入目录并处理所有 .docx 文件
     """
 
-    def __init__(self, log_callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, log_callback: Optional[Callable[[str], None]] = None, model_name: str = None):
         self.log_callback = log_callback
         self.should_stop = False
+        self.model_name = model_name
         self.client = None  # 延迟初始化 LLM 客户端
 
     def log(self, message: str):
@@ -53,7 +54,7 @@ class BatchProcessor:
 
             # 延迟初始化 LLM 客户端
             if self.client is None:
-                self.client = LLMClient()
+                self.client = LLMClient(model_name=self.model_name)
 
             # Phase 3: LLM 提取
             self.log(f"[Phase 3] LLM 结构化提取: {file_name}")
@@ -129,8 +130,8 @@ class AsyncBatchProcessor:
     使用线程运行批处理任务，防止阻塞 UI
     """
 
-    def __init__(self, log_callback: Optional[Callable[[str], None]] = None):
-        self.processor = BatchProcessor(log_callback)
+    def __init__(self, log_callback: Optional[Callable[[str], None]] = None, model_name: str = None):
+        self.processor = BatchProcessor(log_callback, model_name)
         self.thread = None
         self.is_running = False
 
