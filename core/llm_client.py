@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import aiohttp
+import re
 from pathlib import Path
 from typing import List, Dict, Any
 from utils.file_helper import initialize_directories
@@ -112,6 +113,25 @@ D. 错误选项
         with open("user_templates/02_target_output.json", 'w', encoding='utf-8-sig') as f:
             json.dump(default_output, f, ensure_ascii=False, indent=2)
 
+    def _clean_response_content(self, content: str) -> str:
+        """
+        清理 LLM 响应内容，使用正则提取 JSON 数组
+        """
+        content_cleaned = content.strip()
+
+        # 使用正则提取第一个 [ 到最后一个 ] 之间的所有内容
+        # re.DOTALL 允许 . 匹配换行符
+        match = re.search(r'\[.*\]', content_cleaned, re.DOTALL)
+        if match:
+            return match.group(0)
+
+        # 如果没找到数组，尝试找对象 {}
+        match_obj = re.search(r'\{.*\}', content_cleaned, re.DOTALL)
+        if match_obj:
+            return match_obj.group(0)
+
+        return content_cleaned
+
     async def _call_llm_single(self, session: aiohttp.ClientSession, chunk: Dict[str, Any]) -> Dict[str, Any]:
         """
         异步调用 LLM 处理单个块
@@ -144,6 +164,7 @@ D. 错误选项
    - content: 题目内容
    - answer: 答案
    - analysis: 解析
+3. 你必须且只能输出合法的 JSON 数组。绝对禁止在 JSON 字符串内部使用 \\_, \\* 等非法的 Markdown 转义字符！ 遇到填空横线直接输出 ___ 即可。
 
 请直接输出 JSON 数组，不要添加任何其他解释。"""
 
@@ -157,7 +178,8 @@ D. 错误选项
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            "temperature": 0.1
+            "temperature": 0.1,
+            "max_tokens": 8192  # 必须新增此参数，防止长文本截断
         }
 
         headers = {
@@ -197,19 +219,15 @@ D. 错误选项
 
                 # 尝试解析 JSON
                 try:
-                    # 清理响应内容，移除可能的 Markdown 代码块标记
-                    content_cleaned = content.strip()
-                    if content_cleaned.startswith('```json'):
-                        content_cleaned = content_cleaned[7:]  # 移除 ```json
-                    elif content_cleaned.startswith('```'):
-                        content_cleaned = content_cleaned[3:]   # 移除 ```
-
-                    if content_cleaned.endswith('```'):
-                        content_cleaned = content_cleaned[:-3]  # 移除 ```
+                    # 使用新增的清理函数
+                    content_cleaned = self._clean_response_content(content)
 
                     extracted_data = json.loads(content_cleaned)
                     return extracted_data
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    # 如果解析失败，记录详细错误信息
+                    print(f"JSON解析错误: {e}")
+                    print(f"原始内容: {repr(content)}")
                     # 如果解析失败，返回错误信息
                     return {
                         "error": f"Failed to parse LLM response: {content}",
@@ -232,8 +250,8 @@ D. 错误选项
             提取的结构化数据列表
         """
         # 初始化连接池
-        connector = aiohttp.TCPConnector(limit=10)  # 限制并发数
-        timeout = aiohttp.ClientTimeout(total=60)  # 设置超时
+        connector = aiohttp.TCPConnector(limit=3)  # 限制并发数为 3，防止 API 厂商限流拉黑
+        timeout = aiohttp.ClientTimeout(total=300)  # 将超时时间放宽到 300 秒 (5分钟)，给大模型充分的生成时间
 
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             # 创建并发任务
@@ -282,7 +300,25 @@ D. 错误选项
             chunks = json.load(f)
 
         # 提取结构化数据
-        extracted_data = await self.extract_structured_data(chunks)
+        raw_extracted_data = await self.extract_structured_data(chunks)
+
+        # 展平列表，并暴露错误
+        extracted_data = []
+        for item in raw_extracted_data:
+            if isinstance(item, list):
+                extracted_data.extend(item)
+            elif isinstance(item, dict):
+                if "error" in item:
+                    # 遇到错误，生成一个显眼的错误条目占位，绝不能静默丢弃！
+                    extracted_data.append({
+                        "type": "context",
+                        "number": "⚠️提取失败",
+                        "content": f"错误信息: {item['error']}",
+                        "answer": "",
+                        "analysis": f"原始数据块预览: {str(item.get('original_chunk', ''))[:150]}..."
+                    })
+                else:
+                    extracted_data.append(item)
 
         # 生成输出路径
         file_name = Path(chunks_file_path).stem.replace('_chunks', '')

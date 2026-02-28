@@ -18,8 +18,18 @@ def main():
     print("[TEST] 开始端到端测试...")
 
     # 创建批处理器实例
+    def safe_log(msg):
+        # 移除或替换可能引起编码问题的Unicode字符
+        safe_msg = msg.replace('✓', '[OK]').replace('✗', '[ERROR]')
+        try:
+            print(f"[LOG] {safe_msg}")
+        except UnicodeEncodeError:
+            # 如果仍有编码问题，进一步清理
+            safe_msg = safe_msg.encode('utf-8', errors='ignore').decode('utf-8')
+            print(f"[LOG] {safe_msg}")
+
     processor = BatchProcessor(
-        log_callback=lambda msg: print(f"[LOG] {msg}"),
+        log_callback=safe_log,
         model_name="deepseek"  # 使用默认模型
     )
 
