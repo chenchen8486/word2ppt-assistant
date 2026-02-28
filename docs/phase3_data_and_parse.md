@@ -1,31 +1,25 @@
-# Phase 3: 基于 JSON 的严格 Marp 渲染引擎
+# Phase 3: 模板驱动的 python-pptx 渲染引擎
 
-## 任务 1: 定义 Marp 样式底座 (Theme)
-- **需求**: 在生成的 Markdown 头部，必须注入 Marp 的 Front-matter 和全局样式（使用 `<style>` 标签或外部 css），以确保字号统一和结构紧凑。
-- **排版铁律**:
-  1. 大题背景字号较小 (如 `20px` 或 `1.2rem`)。
-  2. 小题（题干、答案、解析）字号稍大 (如 `28px` 或 `1.5rem`)。
-  3. 强调颜色：【答案】和【解析】等关键字可以使用加粗和特定颜色区分。
+## 任务 1: 解析母版架构
+- **核心逻辑**: 彻底废弃 Marp，改用 `python-pptx` 库。
+- **依赖模板**: 必须读取事先做好的 `data/template.pptx` 作为渲染底座。
+- 已知的占位符映射关系：
+  - `Layout 1` (用于大题背景): 文本占位符 `idx=13`
+  - `Layout 2` (用于具体题目): 题干 `idx=13`，答案 `idx=14`，解析 `idx=15`
 
-## 任务 2: Python 智能渲染逻辑 (`core/marp_renderer.py`)
-- **需求**: 读取 `_extracted.json`，将其严格按顺序渲染为 Marp MD 文件。
-- **绝对渲染顺序与分页规则** (必须在代码逻辑中严格实现)：
-  - **遍历 JSON 数组**：必须严格按先后顺序读取。
-  - **处理 context (大题背景文字)**：
-    - 渲染格式：包裹在较小字号的 HTML 标签中，如 `<div style="font-size: 20px; line-height: 1.5;">{text}</div>`。
-    - **防溢出分页算法**：代码中必须实现一个字符统计检测。如果单个 `context` 文本超过预设的安全字数（例如 400 字），Python 必须将其分割成两半，并在中间插入 `---` 强制换页，绝对不能让文字溢出 PPT 边界。
-  - **处理 question (具体小题)**：
-    - 每道小题最多只占用 1-2 页，确保结构紧凑。
-    - **第一页 (题干)**：使用稍大字号 `## {number}. {content}`。
-    - **第二页 (完整解析)**：插入 `---` 换页。展示题干 +【答案】{answer} +【解析】{analysis}。同样需要字数防溢出检测，如果解析过长，通过 `---` 再分一页。
-  - **处理图片**：如果文本中包含提取出的图片名（如 `image1.png`），自动替换为 Marp 图片防溢出语法 `![bg right:40% fit](图片路径)` 或 `![width:800px](图片路径)`。
+## 任务 2: 编写渲染逻辑 (`core/pptx_generator.py`)
+- **需求**: 读取 Phase 2 生成的 `_extracted.json`，按顺序遍历并生成 PPT。
+- **渲染铁律**：
+  1. **智能降噪**: 如果 `type == 'context'` 且文字不足 15 个字符（不含图片），直接跳过不渲染。
+  2. **Context 渲染**: 遇到 `type == 'context'`，添加 `Layout 1`。将内容填入 `idx=13`。如果超过 450 字，按句号切分，并用 `Layout 1` 建立新页继续填充。
+  3. **Question 渲染**: 遇到 `type == 'question'`，添加 `Layout 2`。将内容分别填入对应的 3 个 idx。如果答案或解析极其冗长（超 400 字），按句号切分，并在下一张 `Layout 2` 中继续填充对应位置。
 
-## 任务 3: 中间态落地与 CLI 调度
-- 将最终生成的完整 Markdown 字符串，保存为 `data/02_temp_build/{原文件名}_final.md` (强制使用 `utf-8-sig`)。
-- 调用 `subprocess.run`，使用 `bin/marp.exe` 将 `_final.md` 编译为 `.pptx`。
-- 输出路径设定为 `data/03_output_pptx/{原文件名}.pptx`。
+## 任务 3: 中间态落地
+- 输出文件命名规范必须为：`data/02_temp_build/04_{原文件名}_final.pptx`。
 
-## 验证标准
-1. 编写测试：输入一个包含 800 字超长 context 和 3 道 question 的 Mock JSON。
-2. 验证 `marp_renderer.py` 生成的 MD 文件是否正确插入了 `<style>`，是否在 800 字的长文本中间正确插入了 `---` 进行了防溢出分页。
-3. 验证通过后，Git Commit。
+## 完成状态
+- [x] 核心渲染逻辑实现
+- [x] 智能降噪功能
+- [x] 长文本熔断算法（按450字切分context，按400字切分answer/analysis）
+- [x] Layout 1 & Layout 2 支持
+- [x] 测试通过

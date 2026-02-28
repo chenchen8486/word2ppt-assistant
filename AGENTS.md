@@ -9,8 +9,9 @@
 3. **流水线隔离**: 系统拥有严格的 `data/` 流水线目录（输入、中间态、输出）。请绝对保证不要把生成的临时文件拉在项目根目录。
 4. **自主容错**: 遇到代码报错、依赖冲突或 API 失败，请自主阅读日志并修复，避免频繁中断询问人类。
 5. **渐进式执行**: 请首先阅读 `docs/index.md`，然后严格按照 `docs/phase1xxx.md`， `docs/phase2xxxx.md` 等序号的顺序逐个完成。完成一个阶段，`git commit` 一次。
+6. **黄金样本只读保护**: user_templates/ 目录下的 01_raw_input.md 和 02_target_output.json 是人类精心制作的 Few-Shot 黄金样本。在任何情况下，你的代码和操作**绝对严禁**修改、覆盖或重新生成这两个文件，仅允许在组装 prompt 时读取它们作为参考。
 
 ## 当前工作环境
 - 虚拟环境名称：`Chen` (已激活)
 - 语言：Python 3.10+
-- 核心技术栈：`customtkinter`, `markitdown`, `openai` (DeepSeek), `Marp CLI`
+- 核心技术栈：customtkinter, markitdown, openai (DeepSeek), python-pptx
