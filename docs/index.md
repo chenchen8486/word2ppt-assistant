@@ -9,5 +9,12 @@
 - data/02_temp_build/: 存放所有中间产物。例如：doc_name_raw.md (解析出的纯文本), doc_name_chunks.json (分块数据), doc_name_extracted.json (大模型返回的结果)。这对于人类 Debug 至关重要。
 - `data/03_output_pptx/`: 存放最终的 `.pptx` 结果。
 
-## 3. 下一步行动
-请读取并执行 `docs/phase1_data_and_parse.md`。
+## 3. 开发阶段
+- Phase 1: 数据流搭建与文档解析
+- Phase 2: 智能分块与 Few-Shot 提取
+- Phase 3: 模板驱动的 python-pptx 渲染引擎
+- Phase 4: 端到端集成测试
+- Phase 5: 数据完整性验证与修复机制
+
+## 4. 下一步行动
+请根据需要读取相应阶段的文档。

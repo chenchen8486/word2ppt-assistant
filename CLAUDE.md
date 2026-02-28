@@ -5,4 +5,4 @@
 2. 读取 `docs/index.md` 确认当前项目的宏观架构。
 3. 任何行为如果违背了 `AGENTS.md`，将被视为严重错误。
 4. 阅读D:\project\python\word2ppt-assistant\.claude\skills路径下的开发SOP，并严格遵循。
-5. 任务完成后，请同步更新对应的（如果涉及更新就必须更新，否则可以不更新） docs/phase_xxx.md 和 index.md，并在文档末尾记录本次变更的时间和内容。
+5. 任务完成后，请同步更新对应的（如果涉及更新就必须更新，否则可以不更新） docs路径下的相关开发文档，如:phase_xxx.md等步骤文档 和 index.md，并在文档末尾记录本次变更的时间和内容。
