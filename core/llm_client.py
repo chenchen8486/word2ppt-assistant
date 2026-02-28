@@ -114,23 +114,88 @@ D. 错误选项
             json.dump(default_output, f, ensure_ascii=False, indent=2)
 
     def _clean_response_content(self, content: str) -> str:
-        """
-        清理 LLM 响应内容，使用正则提取 JSON 数组
-        """
+        """清理 LLM 响应内容，安全截取 JSON 数组或对象"""
         content_cleaned = content.strip()
 
-        # 使用正则提取第一个 [ 到最后一个 ] 之间的所有内容
-        # re.DOTALL 允许 . 匹配换行符
-        match = re.search(r'\[.*\]', content_cleaned, re.DOTALL)
-        if match:
-            return match.group(0)
+        # 寻找第一个 [ 和最后一个 ]
+        start_idx = content_cleaned.find('[')
+        end_idx = content_cleaned.rfind(']')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            return content_cleaned[start_idx:end_idx+1]
 
-        # 如果没找到数组，尝试找对象 {}
-        match_obj = re.search(r'\{.*\}', content_cleaned, re.DOTALL)
-        if match_obj:
-            return match_obj.group(0)
+        # 容错：如果不是数组，尝试寻找对象 {}
+        start_idx = content_cleaned.find('{')
+        end_idx = content_cleaned.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            return content_cleaned[start_idx:end_idx+1]
 
         return content_cleaned
+
+    def _validate_json_structure(self, data: Any) -> bool:
+        """
+        验证提取的数据结构是否符合要求
+
+        Args:
+            data: 要验证的数据
+
+        Returns:
+            是否符合要求
+        """
+        if not isinstance(data, list):
+            return False
+
+        for item in data:
+            if not isinstance(item, dict):
+                return False
+
+            # 检查必需字段
+            required_fields = ['type', 'number', 'content']
+            for field in required_fields:
+                if field not in item:
+                    return False
+
+            # 验证 type 值
+            item_type = item.get('type', '').lower()
+            if item_type not in ['context', 'question']:
+                return False
+
+            # 如果是 question 类型，检查额外字段
+            if item_type == 'question':
+                if 'answer' not in item or 'analysis' not in item:
+                    return False
+
+        return True
+
+    def _repair_item_structure(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        修复单个项目的结构
+
+        Args:
+            item: 要修复的项目
+
+        Returns:
+            修复后的项目
+        """
+        # 确保必需字段存在
+        item.setdefault('type', 'question')
+        item.setdefault('number', '')
+        item.setdefault('content', '')
+
+        # 确保类型值有效
+        if item['type'].lower() not in ['context', 'question']:
+            item['type'] = 'question'
+
+        # 对于 question 类型，确保 answer 和 analysis 存在
+        if item['type'].lower() == 'question':
+            item.setdefault('answer', '')
+            item.setdefault('analysis', '')
+
+        # 对于 context 类型，也可以提供默认的 answer 和 analysis
+        if item['type'].lower() == 'context':
+            item.setdefault('answer', '')
+            item.setdefault('analysis', '')
+
+        return item
 
     async def _call_llm_single(self, session: aiohttp.ClientSession, chunk: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -162,9 +227,11 @@ D. 错误选项
    - type: 类型 ("context" 表示背景材料，"question" 表示题目)
    - number: 题号
    - content: 题目内容
-   - answer: 答案
-   - analysis: 解析
+   - answer: 答案 (question类型必须有)
+   - analysis: 解析 (question类型必须有)
 3. 你必须且只能输出合法的 JSON 数组。绝对禁止在 JSON 字符串内部使用 \\_, \\* 等非法的 Markdown 转义字符！ 遇到填空横线直接输出 ___ 即可。
+4. 如果输入内容是背景材料（如"一、"、"二、"开头的内容），请将其标记为"type": "context"，否则标记为"type": "question"
+5. 请确保所有字段都正确填充，不要留空。如果缺少答案或解析，基于内容进行合理的推断。
 
 请直接输出 JSON 数组，不要添加任何其他解释。"""
 
@@ -223,7 +290,54 @@ D. 错误选项
                     content_cleaned = self._clean_response_content(content)
 
                     extracted_data = json.loads(content_cleaned)
-                    return extracted_data
+
+                    # 验证结构并修复
+                    if isinstance(extracted_data, list):
+                        validated_data = []
+                        for item in extracted_data:
+                            if isinstance(item, dict):
+                                # 修复单个项目结构
+                                repaired_item = self._repair_item_structure(item)
+
+                                # 验证修复后的项目
+                                required_fields = ['type', 'number', 'content']
+                                valid = all(field in repaired_item for field in required_fields)
+
+                                if valid:
+                                    validated_data.append(repaired_item)
+                                else:
+                                    # 如果修复后仍不完整，记录错误
+                                    validated_data.append({
+                                        "error": f"Item missing required fields after repair: {item}",
+                                        "original_chunk": chunk
+                                    })
+                            else:
+                                # 非字典项视为错误
+                                validated_data.append({
+                                    "error": f"Non-dict item in extracted data: {item}",
+                                    "original_chunk": chunk
+                                })
+
+                        return validated_data
+                    else:
+                        # 单个对象的情况
+                        if isinstance(extracted_data, dict):
+                            repaired_item = self._repair_item_structure(extracted_data)
+
+                            required_fields = ['type', 'number', 'content']
+                            if all(field in repaired_item for field in required_fields):
+                                return [repaired_item]
+                            else:
+                                return [{
+                                    "error": f"Single item missing required fields after repair: {extracted_data}",
+                                    "original_chunk": chunk
+                                }]
+                        else:
+                            return {
+                                "error": f"Invalid data type from LLM: {type(extracted_data)}",
+                                "original_chunk": chunk
+                            }
+
                 except json.JSONDecodeError as e:
                     # 如果解析失败，记录详细错误信息
                     print(f"JSON解析错误: {e}")

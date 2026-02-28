@@ -1,5 +1,7 @@
 import json
 import re
+import sys
+from pathlib import Path
 from typing import List, Dict, Any
 
 def clean_json_content(text: str) -> str:
@@ -13,9 +15,13 @@ def clean_json_content(text: str) -> str:
 
     return text
 
-def fix_extracted_structure(input_file: str = 'data/02_temp_build/test_extracted.json'):
+def fix_extracted_structure(input_file: str):
     """
     修复提取文件的结构，确保所有项目都有正确的格式
+    支持任意文档名称（包括中文命名）
+
+    Args:
+        input_file: 输入的JSON文件路径
     """
     print(f"开始修复{input_file}文件结构...")
 
@@ -153,7 +159,10 @@ def fix_extracted_structure(input_file: str = 'data/02_temp_build/test_extracted
     print(f'Contexts: {sum(1 for item in fixed_data if item.get("type") == "context")}, Questions: {sum(1 for item in fixed_data if item.get("type") == "question")}')
 
     # 保存修复后的数据
-    output_file = input_file.replace('.json', '_fixed.json')
+    # 基于输入文件名生成输出文件名
+    input_path = Path(input_file)
+    output_file = str(input_path.parent / f"{input_path.stem}_fixed{input_path.suffix}")
+
     with open(output_file, 'w', encoding='utf-8-sig') as f:
         json.dump(fixed_data, f, ensure_ascii=False, indent=2)
 
@@ -162,6 +171,16 @@ def fix_extracted_structure(input_file: str = 'data/02_temp_build/test_extracted
     return fixed_data
 
 if __name__ == '__main__':
-    import sys
-    input_file = sys.argv[1] if len(sys.argv) > 1 else 'data/02_temp_build/test_extracted.json'
+    if len(sys.argv) < 2:
+        print("用法: python fix_missing_parts.py <input_file>")
+        print("示例: python fix_missing_parts.py data/02_temp_build/my_chinese_doc_extracted.json")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+
+    # 检查输入文件是否存在
+    if not Path(input_file).exists():
+        print(f"错误: 输入文件不存在: {input_file}")
+        sys.exit(1)
+
     fix_extracted_structure(input_file)

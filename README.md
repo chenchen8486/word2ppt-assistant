@@ -62,8 +62,26 @@ python test/comprehensive_check.py  # 验证数据完整性
 
 ### 4. 数据修复
 ```bash
-python repair/full_repair_extracted.py  # 修复损坏的extracted.json文件
+# 修复损坏的extracted.json文件（支持任意文档名称，包括中文）
+python repair/generic_repair.py data/02_temp_build/your_document_extracted.json
+
+# 或指定输出文件
+python repair/fix_extracted_structure.py data/02_temp_build/我的文档_extracted.json data/02_temp_build/我的文档_fixed.json
 ```
+
+## 修复脚本改进
+
+修复脚本现在专注于通用性问题，避免过度针对性：
+- 移除了针对特定文档部分的修复脚本
+- 保留了通用性修复功能（如`generic_repair.py`）
+- 优化了LLM客户端，提高首次提取的准确性
+- 减少了对后续修复脚本的依赖
+
+### 修复脚本列表
+- `repair/generic_repair.py`: 通用数据修复
+- `repair/fix_extracted_structure.py`: 基本结构修复
+- `repair/full_repair_extracted.py`: 完整修复提取结果
+- `repair/fix_missing_parts.py`: 修复缺失部分
 
 ## 核心功能说明
 

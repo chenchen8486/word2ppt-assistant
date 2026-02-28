@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-完整修复test_extracted.json文件，从原始混乱结构中提取所有有效数据
+完整修复extracted.json文件，从原始混乱结构中提取所有有效数据
+支持任意文档名称（包括中文命名）
 """
 
 import json
 import re
+import sys
+from pathlib import Path
 
 def extract_data_from_error_string(error_str):
     """从错误字符串中提取JSON数据"""
@@ -62,17 +65,27 @@ def extract_data_from_error_string(error_str):
 
     return None
 
-def full_repair_extracted_json():
-    """完全修复extracted.json文件"""
+def full_repair_extracted_json(input_file, output_file=None):
+    """
+    完全修复extracted.json文件
+
+    Args:
+        input_file: 输入的JSON文件路径
+        output_file: 输出文件路径（如果未指定，则覆盖原文件）
+    """
+    # 如果没有指定输出文件，则使用输入文件路径
+    if output_file is None:
+        output_file = input_file
+
     # 读取原始文件
-    with open('data/02_temp_build/test_extracted.json', 'r', encoding='utf-8-sig') as f:
+    with open(input_file, 'r', encoding='utf-8-sig') as f:
         raw_content = f.read()
 
     # 解析原始数据结构
     try:
         original_data = json.loads(raw_content)
     except json.JSONDecodeError:
-        print("原始文件JSON格式错误，尝试手动修复...")
+        print(f"原始文件JSON格式错误，无法修复: {input_file}")
         return
 
     all_items = []
@@ -148,10 +161,10 @@ def full_repair_extracted_json():
     all_items.sort(key=sort_key)
 
     # 保存修复后的文件
-    with open('data/02_temp_build/test_extracted.json', 'w', encoding='utf-8-sig') as f:
+    with open(output_file, 'w', encoding='utf-8-sig') as f:
         json.dump(all_items, f, ensure_ascii=False, indent=2)
 
-    print(f"修复完成！总共 {len(all_items)} 个项目")
+    print(f"修复完成！总共 {len(all_items)} 个项目，保存到: {output_file}")
 
     # 显示统计信息
     contexts = [item for item in all_items if item.get('type') == 'context']
@@ -169,6 +182,20 @@ def full_repair_extracted_json():
     return all_items
 
 if __name__ == "__main__":
-    print("开始完全修复 test_extracted.json 文件...")
-    result = full_repair_extracted_json()
+    if len(sys.argv) < 2:
+        print("用法: python full_repair_extracted.py <input_file> [output_file]")
+        print("示例: python full_repair_extracted.py data/02_temp_build/my_chinese_doc_extracted.json")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+
+    # 检查输入文件是否存在
+    if not Path(input_file).exists():
+        print(f"错误: 输入文件不存在: {input_file}")
+        sys.exit(1)
+
+    output_file = sys.argv[2] if len(sys.argv) > 2 else input_file
+
+    print(f"开始完全修复文件: {input_file}")
+    result = full_repair_extracted_json(input_file, output_file)
     print("修复完成!")

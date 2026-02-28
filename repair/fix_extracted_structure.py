@@ -1,16 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-修复test_extracted.json文件中的错误数据和结构问题
+修复extracted.json文件中的错误数据和结构问题
+支持任意文档名称（包括中文命名）
 """
 
 import json
 import re
+import sys
+from pathlib import Path
 
-def fix_extracted_json_structure():
-    """修复extracted.json文件结构问题"""
+def fix_extracted_json_structure(input_file, output_file=None):
+    """
+    修复extracted.json文件结构问题
+
+    Args:
+        input_file: 输入的JSON文件路径
+        output_file: 输出文件路径（如果未指定，则覆盖原文件）
+    """
+    # 如果没有指定输出文件，则使用输入文件路径
+    if output_file is None:
+        output_file = input_file
+
     # 读取当前的损坏文件
-    with open('data/02_temp_build/test_extracted.json', 'r', encoding='utf-8-sig') as f:
+    with open(input_file, 'r', encoding='utf-8-sig') as f:
         raw_data = f.read()
 
     # 解析JSON（注意：由于数据格式混乱，我们需要先修复结构）
@@ -18,7 +31,7 @@ def fix_extracted_json_structure():
     try:
         data = json.loads(raw_data)
     except json.JSONDecodeError:
-        print("原始JSON格式有误，需要修复")
+        print(f"原始JSON格式有误，需要修复: {input_file}")
         return
 
     # 过滤并修复数据
@@ -135,10 +148,10 @@ def fix_extracted_json_structure():
     final_data.sort(key=sort_key)
 
     # 保存修复后的文件
-    with open('data/02_temp_build/test_extracted.json', 'w', encoding='utf-8-sig') as f:
+    with open(output_file, 'w', encoding='utf-8-sig') as f:
         json.dump(final_data, f, ensure_ascii=False, indent=2)
 
-    print(f"已保存修复后的文件，包含 {len(final_data)} 个项目")
+    print(f"已保存修复后的文件到: {output_file}，包含 {len(final_data)} 个项目")
 
     # 打印修复后的结构概览
     print("\n修复后数据结构概览:")
@@ -166,6 +179,22 @@ def fix_extracted_json_structure():
     return final_data
 
 if __name__ == "__main__":
-    print("开始修复test_extracted.json文件结构...")
-    fixed_data = fix_extracted_json_structure()
+    # 从命令行参数获取输入文件路径
+    if len(sys.argv) < 2:
+        print("用法: python fix_extracted_structure.py <input_file> [output_file]")
+        print("示例: python fix_extracted_structure.py data/02_temp_build/my_doc_extracted.json")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+
+    # 检查输入文件是否存在
+    if not Path(input_file).exists():
+        print(f"错误: 输入文件不存在: {input_file}")
+        sys.exit(1)
+
+    # 获取输出文件路径（如果提供了第二个参数）
+    output_file = sys.argv[2] if len(sys.argv) > 2 else input_file
+
+    print(f"开始修复文件: {input_file}")
+    fixed_data = fix_extracted_json_structure(input_file, output_file)
     print("修复完成!")
