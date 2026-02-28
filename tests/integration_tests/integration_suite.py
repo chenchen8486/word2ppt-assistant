@@ -204,7 +204,7 @@ def run_comprehensive_check(json_path: str = "data/02_temp_build/test_extracted.
             if len(missing_fields) > 10:
                 print(f"  ... 还有{len(missing_fields)-10}个问题")
         else:
-            print("✓ 所有项目字段完整")
+            print("√ 所有项目字段完整")
 
         # 检查数据类型
         type_errors = []
@@ -233,7 +233,7 @@ def run_comprehensive_check(json_path: str = "data/02_temp_build/test_extracted.
             if len(type_errors) > 10:
                 print(f"  ... 还有{len(type_errors)-10}个错误")
         else:
-            print("✓ 所有项目类型正确")
+            print("√ 所有项目类型正确")
 
         print("=== 综合检查完成 ===")
         return len(missing_fields) == 0 and len(type_errors) == 0

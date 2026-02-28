@@ -3,6 +3,7 @@
 整合了原有的build目录中的构建功能
 """
 import json
+import re
 from pathlib import Path
 from typing import List, Dict, Any
 
