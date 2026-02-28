@@ -11,7 +11,7 @@ import sys
 def run_validation_after_processing():
     """运行验证并在失败时返回非零退出码"""
     try:
-        result = subprocess.run([sys.executable, 'validate_data.py'],
+        result = subprocess.run([sys.executable, '../validation/validate_data.py'],
                               capture_output=True, text=True)
         if result.returncode != 0:
             print("验证失败，返回错误码:", result.returncode)

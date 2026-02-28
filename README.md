@@ -47,22 +47,22 @@ data/
 
 ### 1. 单文件处理
 ```bash
-python run_e2e_test.py  # 端到端测试
+python test/run_e2e_test.py  # 端到端测试
 ```
 
 ### 2. 生成PPTX
 ```bash
-python run_test_pptx.py  # 直接生成PPTX文件
+python test/run_test_pptx.py  # 直接生成PPTX文件
 ```
 
 ### 3. 数据校验
 ```bash
-python comprehensive_check.py  # 验证数据完整性
+python test/comprehensive_check.py  # 验证数据完整性
 ```
 
 ### 4. 数据修复
 ```bash
-python full_repair_extracted.py  # 修复损坏的extracted.json文件
+python repair/full_repair_extracted.py  # 修复损坏的extracted.json文件
 ```
 
 ## 核心功能说明
