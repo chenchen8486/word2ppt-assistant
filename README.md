@@ -40,48 +40,41 @@ data/
 - `core/marp_renderer.py`: Marp渲染器
 - `core/pptx_generator.py`: PPTX生成器
 - `utils/doc_loader.py`: 文档加载工具
-- `comprehensive_check.py`: 数据完整性校验
-- `full_repair_extracted.py`: 数据修复工具
+- `utils/data_repair.py`: 通用数据修复工具
+- `utils/data_validator.py`: 数据验证工具
+- `utils/build_tools.py`: 构建工具
+- `tests/integration_tests/integration_suite.py`: 集成测试套件
+
+## 架构优化
+
+在最近的重构中，我们精简了项目结构：
+- 消除了过度工程化的目录结构
+- 将repair/, validation/, build/功能整合到utils/模块
+- 将零散的测试脚本整合到统一的测试套件中
+- 保持了核心业务功能不变，仅优化了组织结构
+- 提高了代码的可维护性和可读性
 
 ## 使用方法
 
 ### 1. 单文件处理
 ```bash
-python test/run_e2e_test.py  # 端到端测试
+python tests/integration_tests/integration_suite.py e2e  # 端到端测试
 ```
 
 ### 2. 生成PPTX
 ```bash
-python test/run_test_pptx.py  # 直接生成PPTX文件
+python tests/integration_tests/integration_suite.py pptx  # 直接生成PPTX文件
 ```
 
 ### 3. 数据校验
 ```bash
-python test/comprehensive_check.py  # 验证数据完整性
+python tests/integration_tests/integration_suite.py comprehensive  # 验证数据完整性
 ```
 
-### 4. 数据修复
+### 4. 渲染验证
 ```bash
-# 修复损坏的extracted.json文件（支持任意文档名称，包括中文）
-python repair/generic_repair.py data/02_temp_build/your_document_extracted.json
-
-# 或指定输出文件
-python repair/fix_extracted_structure.py data/02_temp_build/我的文档_extracted.json data/02_temp_build/我的文档_fixed.json
+python tests/integration_tests/integration_suite.py phase3  # Phase3验证
 ```
-
-## 修复脚本改进
-
-修复脚本现在专注于通用性问题，避免过度针对性：
-- 移除了针对特定文档部分的修复脚本
-- 保留了通用性修复功能（如`generic_repair.py`）
-- 优化了LLM客户端，提高首次提取的准确性
-- 减少了对后续修复脚本的依赖
-
-### 修复脚本列表
-- `repair/generic_repair.py`: 通用数据修复
-- `repair/fix_extracted_structure.py`: 基本结构修复
-- `repair/full_repair_extracted.py`: 完整修复提取结果
-- `repair/fix_missing_parts.py`: 修复缺失部分
 
 ## 核心功能说明
 
