@@ -11,7 +11,8 @@
       "Bash(python:*)",
       "Bash(where marp:*)",
       "Bash(del:*)",
-      "Bash(find .:*)"
+      "Bash(find .:*)",
+      "Bash(rm:*)"
     ]
   }
 }

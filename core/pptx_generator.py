@@ -23,80 +23,161 @@ class PPTXGenerator:
 
         self.context_max_chars = 450  # Context最大字符数
         self.answer_analysis_max_chars = 400  # Answer/Analysis最大字符数
-        self.question_max_chars = 600  # Question整体最大字符数（优化为600以兼容选项换行）
+        self.question_max_chars = 1000  # Question整体权重阈值（提升到1000）
 
         self.noise_threshold = 15  # 智能降噪阈值
 
-    def _split_text_by_sentences(self, text: str, max_chars: int = 650) -> List[str]:
+    def _get_weighted_length(self, text: str) -> int:
         """
-        按句子边界精确分割文本
+        计算文本的加权长度，考虑换行对版面纵向空间的占用
 
         Args:
             text: 输入文本
-            max_chars: 最大字符数，默认650以避免PPT排版崩溃
 
         Returns:
-            按句子边界分割后的文本列表
+            加权长度（字符数 + 换行数 * 35）
         """
-        if len(text) <= max_chars:
-            return [text]
+        return sum(35 if char == '\n' else 1 for char in text)
 
-        # 定义句子结束符
-        sentence_endings = ['。', '！', '？', '；', ';', '!', '?', '。', '\n']
+    def _split_text_by_sentences(self, text: str, max_weight: int, first_weight: int = None) -> List[str]:
+        """
+        按句子边界和权重精确分割文本，引入首块贪心限制
 
-        # 找到所有句子结束位置
-        positions = []
-        for i, char in enumerate(text):
-            if char in sentence_endings:
-                positions.append(i + 1)  # 包含标点符号
+        Args:
+            text: 输入文本
+            max_weight: 最大权重限制
+            first_weight: 首块权重限制（用于贪心填充）
 
-        # 按最大字符数限制组合句子
+        Returns:
+            按句子边界和权重分割后的文本列表
+        """
+        text_weight = self._get_weighted_length(text)
+        if text_weight <= max_weight:
+            if first_weight is None or text_weight <= first_weight:
+                return [text]
+
+        # 使用正则分割，将换行符也作为句子边界
+        parts = re.split(r'([。！？；\n])', text)
+
+        # 将分隔符和文本部分组合起来
+        sentences = []
+        i = 0
+        while i < len(parts):
+            if i + 1 < len(parts) and parts[i+1] in ['。', '！', '？', '；', '\n']:
+                # 将文本部分和标点符号组合
+                sentence = parts[i] + parts[i+1]
+                sentences.append(sentence)
+                i += 2
+            else:
+                # 最后一部分（如果没有标点符号）
+                if parts[i].strip():  # 如果非空
+                    sentences.append(parts[i])
+                i += 1
+
+        # 实现贪心逻辑
+        chunks = []
+        current_chunk = ""
+        current_weight = 0
+        target_weight = first_weight if first_weight is not None else max_weight
+        first_chunk_done = False
+
+        for sentence in sentences:
+            sentence_weight = self._get_weighted_length(sentence)
+
+            # 如果当前句子本身就已经超过权重限制，需要强制拆分
+            if sentence_weight > max_weight:
+                # 先将当前积累的块添加到结果中
+                if current_chunk:
+                    chunks.append(current_chunk)
+
+                # 对超长句子进行强制拆分
+                split_chunks = self._brute_force_split(sentence, max_weight)
+                chunks.extend(split_chunks)
+
+                # 重置当前块
+                current_chunk = ""
+                current_weight = 0
+
+                # 如果这是第一个块且已经添加了内容，恢复使用max_weight
+                if not first_chunk_done and chunks:
+                    first_chunk_done = True
+                    target_weight = max_weight
+
+                continue
+
+            # 检查是否超出当前目标权重
+            if current_weight + sentence_weight <= target_weight:
+                current_chunk += sentence
+                current_weight += sentence_weight
+            else:
+                # 超出当前目标权重，保存当前块
+                if current_chunk:
+                    chunks.append(current_chunk)
+
+                # 如果这是第一个块，之后的块使用max_weight
+                if not first_chunk_done:
+                    first_chunk_done = True
+                    target_weight = max_weight
+
+                # 如果当前句子可以直接放入新块
+                if sentence_weight <= max_weight:
+                    current_chunk = sentence
+                    current_weight = sentence_weight
+                else:
+                    # 如果单个句子超限，强制拆分
+                    split_chunks = self._brute_force_split(sentence, max_weight)
+                    chunks.extend(split_chunks)
+
+                    current_chunk = ""
+                    current_weight = 0
+
+        # 添加最后的块
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        # 处理没有句子边界的情况
+        if not chunks and text:
+            # 使用暴力拆分
+            chunks = self._brute_force_split(text, max_weight)
+
+        return chunks
+
+    def _brute_force_split(self, text: str, max_weight: int) -> List[str]:
+        """
+        当句子边界分割无法满足权重限制时，强制按字符数分割
+
+        Args:
+            text: 输入文本
+            max_weight: 最大权重
+
+        Returns:
+            分割后的文本列表
+        """
         chunks = []
         start = 0
 
-        for pos in positions:
-            # 检查当前句子加入后是否会超过限制
-            if pos - start > max_chars:
-                # 如果当前句子本身就超过限制，不得不在此处分割
-                if pos - start > max_chars and start != 0:
-                    # 先添加前面的部分
-                    chunk = text[start:pos].strip()
-                    if chunk:
-                        chunks.append(chunk)
-                    start = pos
-                else:
-                    # 查找最佳分割点（尽可能靠近最大字符数限制，但在句子边界）
-                    best_pos = pos
-                    while best_pos > start and len(text[start:best_pos]) > max_chars:
-                        # 从当前位置向前搜索下一个句子边界
-                        prev_sentence_pos = -1
-                        for p in reversed(positions):
-                            if start < p < best_pos:
-                                prev_sentence_pos = p
-                                break
+        while start < len(text):
+            # 找到合适的切分点
+            end = start + max_weight // 2  # 初始估计
+            while end < len(text):
+                chunk = text[start:end]
+                if self._get_weighted_length(chunk) > max_weight:
+                    break
+                end += 1
 
-                        if prev_sentence_pos != -1 and prev_sentence_pos != start:
-                            best_pos = prev_sentence_pos
-                            break
-                        else:
-                            # 如果找不到合适的句子边界，只能在最大字符数处分割
-                            best_pos = start + max_chars
-                            break
+            # 回退到合适的点
+            while end > start:
+                chunk = text[start:end]
+                if self._get_weighted_length(chunk) <= max_weight:
+                    chunks.append(chunk)
+                    start = end
+                    break
+                end -= 1
 
-                    chunk = text[start:best_pos].strip()
-                    if chunk:
-                        chunks.append(chunk)
-                    start = best_pos
-
-        # 处理剩余部分
-        if start < len(text):
-            remaining = text[start:].strip()
-            if len(remaining) > max_chars:
-                # 如果剩余部分仍超过限制，按字符数继续分割
-                for i in range(0, len(remaining), max_chars):
-                    chunks.append(remaining[i:i + max_chars])
-            else:
-                chunks.append(remaining)
+            # 如果连一个字符都无法容纳，至少要放入一个字符
+            if start < len(text) and end == start:
+                chunks.append(text[start:start+1])
+                start += 1
 
         return chunks
 
@@ -115,8 +196,8 @@ class PPTXGenerator:
         else:
             full_content = content
 
-        # 按句子分割长文本，使用650字符的足额阈值（符合零空行原则）
-        content_chunks = self._split_text_by_sentences(full_content, 650)
+        # 按句子分割长文本，使用1200权重的饱和阈值（符合14pt下的空间优化）
+        content_chunks = self._split_text_by_sentences(full_content, 1200)
 
         for chunk in content_chunks:
             # 创建新幻灯片
@@ -137,7 +218,11 @@ class PPTXGenerator:
                 p = text_frame.paragraphs[0] if text_frame.paragraphs else text_frame.add_paragraph()
                 p.text = chunk
                 p.font.size = Pt(14)  # 设置字体大小为14pt
-                p.font.name = '微软雅黑'  # 强制设置中文字体
+                # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+                if re.match(r'^\d+', p.text.strip()):
+                    p.font.name = '黑体'
+                else:
+                    p.font.name = '微软雅黑'  # 强制设置中文字体
                 p.alignment = PP_ALIGN.LEFT  # 左对齐
 
     def _create_question_slides(self, prs, content: str, answer: str, analysis: str, number: str = ""):
@@ -157,74 +242,101 @@ class PPTXGenerator:
         else:
             full_content = content
 
-        # 先处理题干，将其按句子分割
-        content_chunks = self._split_text_by_sentences(full_content, self.question_max_chars)
+        # 1. 渲染题干 (Content)
+        # 将题干按权重分割成块
+        content_chunks = self._split_text_by_sentences(full_content, 800)
 
         # 循环处理题干chunks
         last_tf = None
+        current_page_weight = 0
         for i, chunk in enumerate(content_chunks):
             # 为第一个chunk创建幻灯片，后续的chunk也需要新的幻灯片
-            slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
+            if i == 0:  # 第一个chunk，创建初始幻灯片
+                slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
 
-            # 寻找主文本框 (Body Text placeholder)
-            body_shape = None
-            max_size = 0
+                # 寻找主文本框 (Body Text placeholder)
+                body_shape = None
+                max_size = 0
 
-            # 首先尝试找到 Body Text 类型的占位符
-            for shape in slide.shapes:
-                if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
-                    # 根据模板探测结果，Body/BODY类型的占位符是idx=13，type=2(Body Text) 或 type=1(Text)
-                    if shape.placeholder_format.type == 2 or shape.placeholder_format.type == 1:  # Body Text or Text
-                        body_shape = shape
-                        break
-                    # 如果有明确的 idx=13 的占位符，也可以作为候选
-                    if hasattr(shape.placeholder_format, 'idx') and shape.placeholder_format.idx == 13:
-                        body_shape = shape
-                        break
-                # 如果没找到Body Text，尝试找最大的占位符
-                if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
-                    if shape.width * shape.height > max_size:
-                        max_size = shape.width * shape.height
-                        body_shape = shape
+                # 首先尝试找到 Body Text 类型的占位符
+                for shape in slide.shapes:
+                    if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
+                        # 根据模板探测结果，Body/BODY类型的占位符是idx=13，type=2(Body Text) 或 type=1(Text)
+                        if shape.placeholder_format.type == 2 or shape.placeholder_format.type == 1:  # Body Text or Text
+                            body_shape = shape
+                            break
+                        # 如果有明确的 idx=13 的占位符，也可以作为候选
+                        if hasattr(shape.placeholder_format, 'idx') and shape.placeholder_format.idx == 13:
+                            body_shape = shape
+                            break
+                    # 如果没找到Body Text，尝试找最大的占位符
+                    if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
+                        if shape.width * shape.height > max_size:
+                            max_size = shape.width * shape.height
+                            body_shape = shape
 
-            # 如果没找到合适的占位符，抛出异常
-            if body_shape is None or not body_shape.has_text_frame:
-                raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+                # 如果没找到合适的占位符，抛出异常
+                if body_shape is None or not body_shape.has_text_frame:
+                    raise ValueError("未能找到合适的文本占位符来渲染题目内容")
 
-            # 获取文本框架
-            tf = body_shape.text_frame
-
-            # 清空默认文本
-            tf.clear()
-
-            # 写入题干内容（只在第一个chunk的幻灯片上）
-            if i == 0:  # 第一个chunk
-                p = tf.paragraphs[0]  # 获取第一个段落
-                p.text = chunk
-                p.font.size = Pt(14)  # 设置字体大小为14pt
-                p.font.bold = False   # 正常粗细
-                p.font.name = '微软雅黑'  # 强制设置中文字体
-                p.alignment = PP_ALIGN.LEFT  # 左对齐
+                # 获取文本框架
+                tf = body_shape.text_frame
                 last_tf = tf
-            else:  # 后续chunks（仅当题干超长时才会出现）
-                p = tf.paragraphs[0]
-                p.text = chunk
-                p.font.size = Pt(14)  # 设置字体大小为14pt
-                p.font.bold = False
+
+                # 清空默认文本
+                tf.clear()
+            else:  # 后续chunks，创建新幻灯片
+                slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
+
+                # 寻找主文本框 (Body Text placeholder)
+                body_shape = None
+                max_size = 0
+
+                # 首先尝试找到 Body Text 类型的占位符
+                for shape in slide.shapes:
+                    if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
+                        if shape.placeholder_format.type == 2:  # Body Text
+                            body_shape = shape
+                            break
+                    # 如果没找到Body Text，尝试找最大的占位符
+                    if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
+                        if shape.width * shape.height > max_size:
+                            max_size = shape.width * shape.height
+                            body_shape = shape
+
+                # 如果没找到合适的占位符，抛出异常
+                if body_shape is None or not body_shape.has_text_frame:
+                    raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+
+                # 获取文本框架
+                tf = body_shape.text_frame
+                last_tf = tf
+
+                # 清空默认文本
+                tf.clear()
+
+            # 写入题干内容
+            p = tf.paragraphs[0] if tf.paragraphs else tf.add_paragraph()  # 获取第一个段落或添加新段落
+            p.text = chunk
+            p.font.size = Pt(14)  # 设置字体大小为14pt
+            p.font.bold = False   # 正常粗细
+            # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+            if re.match(r'^\d+', chunk.strip()):
+                p.font.name = '黑体'
+            else:
                 p.font.name = '微软雅黑'  # 强制设置中文字体
-                p.alignment = PP_ALIGN.LEFT  # 左对齐
+            p.alignment = PP_ALIGN.LEFT  # 左对齐
 
-        # 计算是否需要在题干后添加答案和解析
-        ans_ana_len = len(answer) + len(analysis)
+            # 更新当前页权重
+            current_page_weight = self._get_weighted_length(chunk)
 
-        # 如果有答案或解析，需要判断是否需要换页或添加到现有页
-        if answer or analysis:
-            # 检查最后一个幻灯片上的题干内容长度
-            last_content_len = len(last_tf.paragraphs[0].text) if last_tf and last_tf.paragraphs else 0
+        # 2. 渲染答案 (Answer)
+        if answer:
+            answer_weight = self._get_weighted_length(answer)
 
-            # 如果当前页剩余空间不足以容纳答案和解析，需要新建一页
-            if last_content_len + ans_ana_len > self.question_max_chars:
-                # 创建新的幻灯片来放置答案和解析
+            # 检查当前页是否能容纳答案
+            if current_page_weight + answer_weight > 800:
+                # 需要翻页
                 slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
 
                 # 寻找主文本框 (Body Text placeholder)
@@ -249,45 +361,161 @@ class PPTXGenerator:
 
                 # 获取文本框架
                 last_tf = body_shape.text_frame
-
                 # 清空默认文本
                 last_tf.clear()
 
-                # 写入题干内容（作为延续）
-                p = last_tf.paragraphs[0]  # 获取第一个段落
-                p.text = "[内容续]"  # 添加提示
-                p.font.size = Pt(14)  # 设置字体大小为14pt
-                p.font.bold = False   # 正常粗细
-                p.font.name = '微软雅黑'  # 强制设置中文字体
-                p.alignment = PP_ALIGN.LEFT  # 左对齐
+                # 重置当前页权重
+                current_page_weight = 0
 
-            # 添加答案（如果存在）
-            if answer:
-                answer_p = last_tf.add_paragraph()  # 添加新段落
-                answer_p.text = f"【答案】{answer}"  # 移除\n前缀以符合零空行原则
-                answer_p.font.size = Pt(14)  # 设置字体大小为14pt
-                answer_p.font.bold = True    # 加粗
-                answer_p.font.color.rgb = RGBColor(220, 53, 69)  # 红色
+            # 写入答案
+            answer_p = last_tf.add_paragraph()  # 添加新段落
+            answer_p.text = f"【答案】{answer}"  # 移除\n前缀以符合零空行原则
+            answer_p.font.size = Pt(14)  # 设置字体大小为14pt
+            answer_p.font.bold = True    # 加粗
+            answer_p.font.color.rgb = RGBColor(220, 53, 69)  # 红色
+            # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+            if re.match(r'^\d+', answer_p.text.strip()):
+                answer_p.font.name = '黑体'
+            else:
                 answer_p.font.name = '微软雅黑'  # 强制设置中文字体
-                answer_p.alignment = PP_ALIGN.LEFT  # 左对齐
+            answer_p.alignment = PP_ALIGN.LEFT  # 左对齐
 
-            # 处理解析（如果存在）
-            if analysis:
-                # 检查是否需要进一步拆分分析
-                analysis_chunks = self._split_text_by_sentences(analysis, self.question_max_chars)
+            # 更新当前页权重
+            current_page_weight += answer_weight
 
-                for j, ana_chunk in enumerate(analysis_chunks):
-                    analysis_p = last_tf.add_paragraph()  # 添加新段落
-                    if j == 0:
-                        analysis_p.text = f"【解析】{ana_chunk}"  # 移除\n前缀以符合零空行原则
-                    else:
-                        analysis_p.text = f"[解析续]{ana_chunk}"
+        # 3. 渲染解析 (Analysis)
+        if analysis:
+            # 计算当前幻灯片的剩余空间
+            available_space = self.question_max_chars - current_page_weight
 
-                    analysis_p.font.size = Pt(14)  # 设置字体大小为14pt
-                    analysis_p.font.bold = False   # 正常粗细
-                    analysis_p.font.color.rgb = RGBColor(40, 167, 69)  # 绿色
+            # 如果剩余空间极小（< 100），直接翻页，给新页完整空间
+            if available_space < 100:
+                # 需要翻页
+                slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
+
+                # 寻找主文本框 (Body Text placeholder)
+                body_shape = None
+                max_size = 0
+
+                # 首先尝试找到 Body Text 类型的占位符
+                for shape in slide.shapes:
+                    if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
+                        if shape.placeholder_format.type == 2:  # Body Text
+                            body_shape = shape
+                            break
+                    # 如果没找到Body Text，尝试找最大的占位符
+                    if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
+                        if shape.width * shape.height > max_size:
+                            max_size = shape.width * shape.height
+                            body_shape = shape
+
+                # 如果没找到合适的占位符，抛出异常
+                if body_shape is None or not body_shape.has_text_frame:
+                    raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+
+                # 获取文本框架
+                last_tf = body_shape.text_frame
+                # 清空默认文本
+                last_tf.clear()
+
+                # 重置当前页权重
+                current_page_weight = 0
+                available_space = self.question_max_chars
+
+            # 将 available_space 传入切分器，做到贪心填充
+            analysis_chunks = self._split_text_by_sentences(analysis, max_weight=self.question_max_chars, first_weight=available_space)
+
+            for j, ana_chunk in enumerate(analysis_chunks):
+                ana_chunk_weight = self._get_weighted_length(ana_chunk)
+
+                # 检查当前页是否能容纳解析块（第一个chunk会用available_space的剩余空间）
+                if j == 0:
+                    # 第一个chunk使用可用空间
+                    effective_space = self.question_max_chars - current_page_weight
+                    if current_page_weight + ana_chunk_weight > self.question_max_chars:
+                        # 需要翻页
+                        slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
+
+                        # 寻找主文本框 (Body Text placeholder)
+                        body_shape = None
+                        max_size = 0
+
+                        # 首先尝试找到 Body Text 类型的占位符
+                        for shape in slide.shapes:
+                            if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
+                                if shape.placeholder_format.type == 2:  # Body Text
+                                    body_shape = shape
+                                    break
+                            # 如果没找到Body Text，尝试找最大的占位符
+                            if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
+                                if shape.width * shape.height > max_size:
+                                    max_size = shape.width * shape.height
+                                    body_shape = shape
+
+                        # 如果没找到合适的占位符，抛出异常
+                        if body_shape is None or not body_shape.has_text_frame:
+                            raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+
+                        # 获取文本框架
+                        last_tf = body_shape.text_frame
+                        # 清空默认文本
+                        last_tf.clear()
+
+                        # 重置当前页权重
+                        current_page_weight = 0
+                else:
+                    # 后续chunks使用完整空间
+                    if current_page_weight + ana_chunk_weight > self.question_max_chars:
+                        # 需要翻页
+                        slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
+
+                        # 寻找主文本框 (Body Text placeholder)
+                        body_shape = None
+                        max_size = 0
+
+                        # 首先尝试找到 Body Text 类型的占位符
+                        for shape in slide.shapes:
+                            if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
+                                if shape.placeholder_format.type == 2:  # Body Text
+                                    body_shape = shape
+                                    break
+                            # 如果没找到Body Text，尝试找最大的占位符
+                            if hasattr(shape, 'placeholder_format') and shape.has_text_frame:
+                                if shape.width * shape.height > max_size:
+                                    max_size = shape.width * shape.height
+                                    body_shape = shape
+
+                        # 如果没找到合适的占位符，抛出异常
+                        if body_shape is None or not body_shape.has_text_frame:
+                            raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+
+                        # 获取文本框架
+                        last_tf = body_shape.text_frame
+                        # 清空默认文本
+                        last_tf.clear()
+
+                        # 重置当前页权重
+                        current_page_weight = 0
+
+                # 写入解析块
+                analysis_p = last_tf.add_paragraph()  # 添加新段落
+                if j == 0:
+                    analysis_p.text = f"【解析】{ana_chunk}"  # 移除\n前缀以符合零空行原则
+                else:
+                    analysis_p.text = f"[解析续]{ana_chunk}"
+
+                analysis_p.font.size = Pt(14)  # 设置字体大小为14pt
+                analysis_p.font.bold = False   # 正常粗细
+                analysis_p.font.color.rgb = RGBColor(40, 167, 69)  # 绿色
+                # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+                if re.match(r'^\d+', analysis_p.text.strip()):
+                    analysis_p.font.name = '黑体'
+                else:
                     analysis_p.font.name = '微软雅黑'  # 强制设置中文字体
-                    analysis_p.alignment = PP_ALIGN.LEFT  # 左对齐
+                analysis_p.alignment = PP_ALIGN.LEFT  # 左对齐
+
+                # 更新当前页权重
+                current_page_weight += ana_chunk_weight
 
     def generate(self, json_path: str, template_path: str, output_path: str) -> bool:
         """
