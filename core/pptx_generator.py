@@ -517,7 +517,7 @@ class PPTXGenerator:
                 # 更新当前页权重
                 current_page_weight += ana_chunk_weight
 
-    def generate(self, json_path: str, template_path: str, output_path: str) -> bool:
+    def generate(self, json_path: str, template_path: str, output_path: str, doc_title: str = None) -> bool:
         """
         生成PPTX文件的核心方法
 
@@ -537,15 +537,40 @@ class PPTXGenerator:
             # 加载模板
             prs = Presentation(template_path)
 
+            # 检查是否有初始幻灯片，并将其作为封面页
+            if len(prs.slides) > 0:
+                # 如果存在封面页，设置标题
+                first_slide = prs.slides[0]
+                if first_slide.shapes.title:
+                    if doc_title:
+                        first_slide.shapes.title.text = doc_title
+                else:
+                    # 尝试找到其他可能的标题形状
+                    for shape in first_slide.shapes:
+                        if hasattr(shape, 'has_text_frame') and shape.has_text_frame:
+                            # 检查是否是标题形状（通过索引或其他标识判断）
+                            if hasattr(shape, 'placeholder_format') and shape.placeholder_format:
+                                if shape.placeholder_format.type == 0:  # Title placeholder
+                                    shape.text_frame.text = doc_title or ""
+                                    break
+            else:
+                # 如果没有初始幻灯片，添加封面页
+                if doc_title:
+                    title_slide_layout = prs.slide_layouts[0]  # 通常为标题版式
+                    title_slide = prs.slides.add_slide(title_slide_layout)
+                    if title_slide.shapes.title:
+                        title_slide.shapes.title.text = doc_title
+
             # 遍历所有条目
-            for item_or_list in extracted_data:
+            for i, item_or_list in enumerate(extracted_data):
                 if isinstance(item_or_list, list):
                     # 如果是列表，遍历其中的每个项目
                     for item in item_or_list:
-                        self._process_item(prs, item)
+                        self._process_item(prs, item, i == 0)  # 传递首项标识
                 elif isinstance(item_or_list, dict):
-                    # 如果是字典，直接处理
-                    self._process_item(prs, item_or_list)
+                    # 如果是字典，直接处理，标记是否为首项
+                    is_first_item = (i == 0)
+                    self._process_item(prs, item_or_list, is_first_item)
 
             # 保存PPTX文件
             prs.save(output_path)
@@ -556,13 +581,14 @@ class PPTXGenerator:
             print(f"Error generating PPTX: {str(e)}")
             return False
 
-    def _process_item(self, prs, item: Dict[str, Any]):
+    def _process_item(self, prs, item: Dict[str, Any], is_first_item: bool = False):
         """
         处理单个项目
 
         Args:
             prs: Presentation对象
             item: 数据项
+            is_first_item: 是否是列表中的第一项
         """
         if not isinstance(item, dict):
             return
@@ -582,6 +608,12 @@ class PPTXGenerator:
         if item_type == 'context':
             content = item.get('content', '')
             number = item.get('number', '')  # 提取题号
+
+            # 泛化剔除冗余标题（首项智能屏蔽）：如果第一项是context类型且number为空字符串，
+            # 极可能是LLM提取的试卷头部标题信息，直接跳过
+            if is_first_item and number == "":
+                print(f"Skipping redundant header context: '{content[:50]}...' (detected as header)")
+                return
 
             # 智能降噪：如果内容长度小于阈值，跳过
             if len(content.strip()) < self.noise_threshold:
@@ -617,6 +649,7 @@ if __name__ == "__main__":
     success = generator.generate(
         json_path="data/02_temp_build/test_extracted.json",
         template_path="data/template.pptx",
-        output_path="data/03_output_pptx/test_output.pptx"
+        output_path="data/03_output_pptx/test_output.pptx",
+        doc_title="测试试卷标题"  # 示例文档标题
     )
     print(f"Generation {'successful' if success else 'failed'}")

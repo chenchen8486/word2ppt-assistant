@@ -79,7 +79,8 @@ class BatchProcessor:
             success = generator.generate(
                 json_path=extracted_path,
                 template_path="data/template.pptx",
-                output_path=str(output_path)
+                output_path=str(output_path),
+                doc_title=file_name  # Pass the document title
             )
 
             if success:

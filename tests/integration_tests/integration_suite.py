@@ -51,19 +51,30 @@ def run_end_to_end_test(docx_path: str = "data/01_input_docs/test.docx"):
         print(f"✓ LLM提取完成: {extracted_path}")
 
         # 5. 渲染
-        print("步骤 4: 渲染为Marp...")
-        from core.marp_renderer import MarpRenderer
-        renderer = MarpRenderer()
-        final_md_path = renderer.render_from_file(extracted_path)
-        print(f"✓ Marp渲染完成: {final_md_path}")
+        print("步骤 4: 渲染为PPTX...")
+        from core.pptx_generator import PPTXGenerator
+        import os
+        from pathlib import Path
 
-        # 6. 转换为PPTX
-        print("步骤 5: 转换为PPTX...")
-        pptx_path = renderer.convert_to_pptx(final_md_path)
-        if pptx_path:
-            print(f"✓ PPTX转换完成: {pptx_path}")
+        # 生成输出路径
+        doc_name = Path(extracted_path).stem.replace('_extracted', '')
+        output_dir = Path("data/03_output_pptx")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{doc_name}.pptx"
+
+        # 创建PPTX生成器并生成文件
+        generator = PPTXGenerator()
+        success = generator.generate(
+            json_path=extracted_path,
+            template_path="data/template.pptx",
+            output_path=str(output_path)
+        )
+
+        if success:
+            print(f"✓ PPTX生成完成: {output_path}")
+            final_pptx_path = str(output_path)
         else:
-            print("✗ PPTX转换失败")
+            print("✗ PPTX生成失败")
             return False
 
         print("=== 端到端测试完成 ===")
@@ -91,23 +102,30 @@ def run_test_pptx_generation(extracted_json_path: str = "data/02_temp_build/test
         return False
 
     try:
-        from core.marp_renderer import MarpRenderer
+        from core.pptx_generator import PPTXGenerator
+        import os
+        from pathlib import Path
 
-        # 渲染为Markdown
-        print("步骤 1: 渲染为Marp Markdown...")
-        renderer = MarpRenderer()
-        final_md_path = renderer.render_from_file(str(json_path))
-        print(f"✓ Marp渲染完成: {final_md_path}")
+        # 生成输出路径
+        doc_name = Path(extracted_json_path).stem.replace('_extracted', '')
+        output_dir = Path("data/03_output_pptx")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{doc_name}.pptx"
 
-        # 转换为PPTX
-        print("步骤 2: 转换为PPTX...")
-        pptx_path = renderer.convert_to_pptx(final_md_path)
-        if pptx_path:
-            print(f"✓ PPTX生成完成: {pptx_path}")
+        # 创建PPTX生成器并生成文件
+        generator = PPTXGenerator()
+        success = generator.generate(
+            json_path=extracted_json_path,
+            template_path="data/template.pptx",
+            output_path=str(output_path)
+        )
+
+        if success:
+            print(f"✓ PPTX生成完成: {output_path}")
             print("=== PPTX生成测试完成 ===")
             return True
         else:
-            print("✗ PPTX转换失败")
+            print("✗ PPTX生成失败")
             return False
 
     except Exception as e:
@@ -132,13 +150,30 @@ def run_phase3_validation(json_path: str = "data/02_temp_build/test_extracted.js
         return False
 
     try:
-        from core.marp_renderer import MarpRenderer
+        from core.pptx_generator import PPTXGenerator
+        import os
+        from pathlib import Path
 
-        # 尝试渲染
-        print("尝试渲染JSON数据...")
-        renderer = MarpRenderer()
-        md_path = renderer.render_from_file(str(json_file))
-        print(f"✓ 渲染成功: {md_path}")
+        # 生成输出路径
+        doc_name = Path(json_path).stem.replace('_extracted', '')
+        output_dir = Path("data/03_output_pptx")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{doc_name}.pptx"
+
+        # 尝试生成PPTX
+        print("尝试生成PPTX...")
+        generator = PPTXGenerator()
+        success = generator.generate(
+            json_path=json_path,
+            template_path="data/template.pptx",
+            output_path=str(output_path)
+        )
+
+        if success:
+            print(f"✓ PPTX生成成功: {output_path}")
+        else:
+            print("✗ PPTX生成失败")
+            return False
 
         print("=== Phase 3验证完成 ===")
         return True
@@ -186,16 +221,26 @@ def run_comprehensive_check(json_path: str = "data/02_temp_build/test_extracted.
             if isinstance(item, dict):
                 if 'type' not in item:
                     missing_fields.append(f"项目{i}: 缺少type字段")
-                if 'number' not in item:
-                    missing_fields.append(f"项目{i}: 缺少number字段")
-                if 'content' not in item:
-                    missing_fields.append(f"项目{i}: 缺少content字段")
 
-                if item.get('type') == 'question':
+                item_type = item.get('type', '').lower()
+                if item_type == 'context':
+                    if 'content' not in item:
+                        missing_fields.append(f"项目{i}: context项目缺少content字段")
+                    if 'number' not in item:
+                        missing_fields.append(f"项目{i}: context项目缺少number字段")
+                elif item_type == 'question':
+                    if 'question' not in item:
+                        missing_fields.append(f"项目{i}: question项目缺少question字段")
                     if 'answer' not in item:
-                        missing_fields.append(f"问题{i}: 缺少answer字段")
+                        missing_fields.append(f"项目{i}: question项目缺少answer字段")
                     if 'analysis' not in item:
-                        missing_fields.append(f"问题{i}: 缺少analysis字段")
+                        missing_fields.append(f"项目{i}: question项目缺少analysis字段")
+                else:
+                    # 对于未知类型，仍检查通用字段
+                    if 'content' not in item:
+                        missing_fields.append(f"项目{i}: 缺少content字段")
+                    if 'number' not in item:
+                        missing_fields.append(f"项目{i}: 缺少number字段")
 
         if missing_fields:
             print(f"发现{len(missing_fields)}个字段缺失问题:")
@@ -215,16 +260,26 @@ def run_comprehensive_check(json_path: str = "data/02_temp_build/test_extracted.
 
             if not isinstance(item.get('type'), str):
                 type_errors.append(f"项目{i}: type字段不是字符串")
-            if not isinstance(item.get('number'), str):
-                type_errors.append(f"项目{i}: number字段不是字符串")
-            if not isinstance(item.get('content'), str):
-                type_errors.append(f"项目{i}: content字段不是字符串")
 
-            if item.get('type') == 'question':
+            item_type = item.get('type', '').lower()
+            if item_type == 'context':
+                if not isinstance(item.get('content'), str):
+                    type_errors.append(f"项目{i}: context项目的content字段不是字符串")
+                if not isinstance(item.get('number'), str):
+                    type_errors.append(f"项目{i}: context项目的number字段不是字符串")
+            elif item_type == 'question':
+                if not isinstance(item.get('question'), str):
+                    type_errors.append(f"项目{i}: question项目的question字段不是字符串")
                 if not isinstance(item.get('answer'), str):
-                    type_errors.append(f"问题{i}: answer字段不是字符串")
+                    type_errors.append(f"项目{i}: question项目的answer字段不是字符串")
                 if not isinstance(item.get('analysis'), str):
-                    type_errors.append(f"问题{i}: analysis字段不是字符串")
+                    type_errors.append(f"项目{i}: question项目的analysis字段不是字符串")
+            else:
+                # 通用检查
+                if not isinstance(item.get('content'), str):
+                    type_errors.append(f"项目{i}: content字段不是字符串")
+                if not isinstance(item.get('number'), str):
+                    type_errors.append(f"项目{i}: number字段不是字符串")
 
         if type_errors:
             print(f"发现{len(type_errors)}个类型错误:")
