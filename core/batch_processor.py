@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from utils.doc_loader import extract_document_content
 from core.chunk_manager import ChunkManager
 from core.llm_client import LLMClient
-from core.marp_renderer import MarpRenderer
+from core.pptx_generator import PPTXGenerator
 
 
 class BatchProcessor:
@@ -66,20 +66,26 @@ class BatchProcessor:
             extracted_path = extracted_result['output_path']
             self.log(f"✓ LLM 提取完成: {extracted_path}")
 
-            # Phase 3: 渲染为 Marp
-            self.log(f"[Phase 3] 渲染为 Marp: {file_name}")
-            renderer = MarpRenderer()
-            final_md_path = renderer.render_from_file(extracted_path)
-            self.log(f"✓ Marp 渲染完成: {final_md_path}")
+            # Phase 3: 渲染为 PPTX
+            self.log(f"[Phase 3] 渲染为 PPTX: {file_name}")
 
-            # Phase 3: 转换为 PPTX
-            self.log(f"[Phase 3] 转换为 PPTX: {file_name}")
-            renderer = MarpRenderer()  # 重新创建渲染器实例
-            pptx_path = renderer.convert_to_pptx(final_md_path)
-            if pptx_path:
-                self.log(f"✓ PPTX 转换完成: {pptx_path}")
+            # 生成输出路径
+            output_dir = Path("data/03_output_pptx")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / f"{file_name}.pptx"
+
+            # 创建PPTX生成器并生成文件
+            generator = PPTXGenerator()
+            success = generator.generate(
+                json_path=extracted_path,
+                template_path="data/template.pptx",
+                output_path=str(output_path)
+            )
+
+            if success:
+                self.log(f"✓ PPTX 生成完成: {output_path}")
             else:
-                self.log(f"✗ PPTX 转换失败: {file_name}")
+                self.log(f"✗ PPTX 生成失败: {file_name}")
 
             self.log(f"✓ 文件处理完成: {file_name}")
 

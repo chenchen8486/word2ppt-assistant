@@ -12,7 +12,6 @@ word2ppt-assistant/
 ├── requirements.txt          # 依赖包列表
 ├── README.md                 # 项目说明
 ├── PROJECT_STRUCTURE.md      # 本文件 - 项目结构说明
-├── AGENTS.md                 # 智能体行为准则
 ├── PROJECT_SUMMARY.md        # 项目摘要
 ├── bin/                      # 可执行文件目录
 ├── core/                     # 核心模块
