@@ -1,23 +1,116 @@
-# Word转PPT助手
+# Word2PPT Assistant
 
 一个自动化工具，可将Word文档转换为PPT演示文稿，特别适用于处理包含文本、表格和图像的结构化文档（如考试题、练习题等）。
+
+## 项目背景
+
+Word2PPT Assistant 是一款专为批量处理设计的本地GUI应用，基于大语言模型（LLM）将Word试卷结构化并转换为高质量PPTX的工具。该应用支持批量处理、结构化解析、智能化转换等功能，旨在为教育工作者、企业培训师和内容创作者提供高效便捷的文档格式转换解决方案。
+
+## 工程Pipeline流程
+
+### Phase 1: 文档解析 (Doc Loader)
+```
+┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│   Word文档      │ -> │  markitdown     │ -> │ Markdown格式输出 │
+│   (.docx)       │    │   解析器        │    │   (.md)          │
+└─────────────────┘    └─────────────────┘    └──────────────────┘
+                              │
+                              ▼
+                      ┌─────────────────┐
+                      │ 结构化内容提取  │
+                      │   - 标题        │
+                      │   - 段落        │
+                      │   - 图片        │
+                      │   - 表格        │
+                      └─────────────────┘
+```
+
+### Phase 2: 内容分块 (Chunk Manager)
+```
+┌──────────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│ Markdown内容    │ -> │   分块算法      │ -> │   分块结果       │
+│                 │    │   - 按题型分割  │    │   - 题目块       │
+│                 │    │   - 按权重分割  │    │   - 内容块       │
+│                 │    │   - 长度控制    │    │   - 附件块       │
+└──────────────────┘    └─────────────────┘    └──────────────────┘
+                              │
+                              ▼
+                      ┌─────────────────┐
+                      │   优化分块      │
+                      │   - 语义完整性  │
+                      │   - 逻辑连贯性  │
+                      └─────────────────┘
+```
+
+### Phase 3: LLM 结构化提取 (LLM Client)
+```
+┌──────────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│   分块内容      │ -> │   LLM处理      │ -> │  JSON结构化输出  │
+│   (题目/内容)   │    │   - 识别题型   │    │   - 题目对象     │
+│                 │    │   - 提取要素   │    │   - 选项数组     │
+│                 │    │   - 语义分析   │    │   - 答案解析     │
+└──────────────────┘    └─────────────────┘    └──────────────────┘
+                              │
+                              ▼
+                      ┌─────────────────┐
+                      │   数据验证      │
+                      │   - 格式检查   │
+                      │   - 完整性校验 │
+                      └─────────────────┘
+```
+
+### Phase 4: PPTX 渲染 (PPTX Generator)
+```
+┌──────────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│   JSON数据      │ -> │   PPTX生成     │ -> │   最终PPTX文件   │
+│   (结构化内容)  │    │   - 布局设计   │    │   (.pptx)        │
+│                 │    │   - 样式应用   │    │                  │
+│                 │    │   - 版面编排   │    │                  │
+└──────────────────┘    └─────────────────┘    └──────────────────┘
+                              │
+                              ▼
+                      ┌─────────────────┐
+                      │   优化渲染      │
+                      │   - 字体统一   │
+                      │   - 布局调整   │
+                      │   - 质量检查   │
+                      └─────────────────┘
+```
+
+## 总体工作流程
+
+```
+用户上传Word文档 -> Phase 1: 解析 -> Phase 2: 分块 -> Phase 3: LLM提取 -> Phase 4: PPTX生成 -> 输出PPT文件
+
+                                ┌─────────────────────────────────────┐
+                                │           主要特点                 │
+                                ├─────────────────────────────────────┤
+                                │ • 批量处理能力                      │
+                                │ • 结构化内容识别                    │
+                                │ • 智能分块算法                      │
+                                │ • LLM辅助解析                      │
+                                │ • 可视化GUI界面                     │
+                                │ • 配置化部署                        │
+                                └─────────────────────────────────────┘
+```
 
 ## 功能特性
 
 - **智能解析**: 从Word文档中提取文本内容，保持结构完整性
 - **内容分块**: 将长文档分割为合适的处理单元
 - **AI处理**: 使用LLM对内容进行结构化提取和分析
-- **多格式输出**: 支持Markdown (Marp) 和 PowerPoint (PPTX) 格式
+- **多格式输出**: 支持PowerPoint (PPTX) 格式
 - **数据完整性**: 包含错误处理和数据修复机制
 - **验证校验**: 全面的数据完整性验证
+- **图形界面**: 现代化的CustomTkinter GUI界面
+- **配置管理**: JSON外置配置，支持多模型切换
 
 ## 工作流程
 
 1. **文档解析**: 从 `.docx` 文件中提取内容，保存为 `.raw.md`
 2. **内容分块**: 将长文档分割为多个块，保存为 `.chunks.json`
 3. **AI处理**: 使用大语言模型结构化提取内容，保存为 `.extracted.json`
-4. **渲染**: 将结构化数据渲染为 Marp 格式的 Markdown 文件
-5. **转换**: 将 Markdown 转换为 PowerPoint 演示文稿
+4. **渲染**: 将结构化数据渲染为 PowerPoint 演示文稿
 
 ## 目录结构
 
@@ -28,95 +121,103 @@ data/
 │   ├── *.raw.md           # 原始提取内容
 │   ├── *.chunks.json      # 内容分块
 │   ├── *.extracted.json   # 结构化提取结果
-│   ├── *.final.md         # 最终Markdown文件
 │   └── *.images/          # 图像资源
 └── 03_output_pptx/         # 最终PPTX输出
+
+user_templates/             # 用户模板目录
+├── 01_raw_input.md        # 原始输入模板
+└── 02_target_output.json  # 目标输出模板
+
+utils/                      # 工具模块
+├── config_manager.py      # 配置管理器
+├── doc_loader.py          # 文档加载器
+├── file_helper.py         # 文件助手
+└── dependency_manager.py  # 依赖管理器
+
+core/                       # 核心模块
+├── batch_processor.py     # 批量处理器
+├── chunk_manager.py       # 分块管理器
+├── llm_client.py          # LLM客户端
+└── pptx_generator.py      # PPTX生成器
+
+tests/                      # 测试模块
+└── unit_tests/            # 单元测试
 ```
 
 ## 主要组件
 
+- `main.py`: GUI主界面入口
 - `core/batch_processor.py`: 批量处理引擎
 - `core/llm_client.py`: LLM交互客户端
-- `core/marp_renderer.py`: Marp渲染器
 - `core/pptx_generator.py`: PPTX生成器
 - `utils/doc_loader.py`: 文档加载工具
+- `utils/config_manager.py`: 配置管理工具
 - `utils/data_repair.py`: 通用数据修复工具
 - `utils/data_validator.py`: 数据验证工具
-- `utils/build_tools.py`: 构建工具
-- `tests/integration_tests/integration_suite.py`: 集成测试套件
+- `tests/unit_tests/`: 各阶段测试套件
 
 ## 架构优化
 
-在最近的重构中，我们精简了项目结构，遵循极简工程主义原则：
-- 消除了过度工程化的目录结构
-- 将repair/, validation/, build/功能整合到utils/模块
-- 将零散的测试脚本整合到统一的测试套件中
-- 保持了核心业务功能不变，仅优化了组织结构
-- 提高了代码的可维护性和可读性
-- 体现了"消除过度工程化，保持核心功能完整"的设计哲学
+在最近的重构中，我们进行了以下优化：
+- 采用现代化GUI界面（CustomTkinter侧边栏布局）
+- 实现双轨日志系统（用户模式/开发者模式）
+- 添加文件夹路径记忆功能
+- 支持PyInstaller打包兼容
+- 配置外置化（config.json）
+- 消除过度工程化，保持核心功能完整
 
 ## 使用方法
 
-### 1. 单文件处理
+### 1. 启动GUI界面
 ```bash
-python tests/integration_tests/integration_suite.py e2e  # 端到端测试
+python main.py
 ```
 
-### 2. 生成PPTX
-```bash
-python tests/integration_tests/integration_suite.py pptx  # 直接生成PPTX文件
-```
+### 2. 配置API密钥
+编辑 `config.json` 文件，填入相应的API密钥和端点信息
 
-### 3. 数据校验
-```bash
-python tests/integration_tests/integration_suite.py comprehensive  # 验证数据完整性
-```
+### 3. 批量处理文档
+在GUI界面中选择Word文档所在文件夹，点击"开始批量转换"
 
-### 4. 渲染验证
-```bash
-python tests/integration_tests/integration_suite.py phase3  # Phase3验证
-```
+## 系统架构
 
-## 核心功能说明
+- **前端界面**: CustomTkinter (现代化GUI)
+- **文档解析**: markitdown (结构化提取)
+- **AI引擎**: OpenAI Compatible API (DeepSeek/Qwen)
+- **PPT生成**: python-pptx (高质量渲染)
+- **配置管理**: JSON配置文件 (外置配置)
+- **批处理**: 多线程异步处理 (高并发)
 
-### 数据完整性验证与修复机制
+## 部署方式
 
-1. **JSON数据序列完整性验证** - 检测题目编号是否连续
-2. **自动修复缺失题目** - 从备份源获取缺失内容
-3. **数据顺序重组** - 按逻辑关系重新排列context-question对
-4. **错误数据处理与恢复** - 从损坏JSON中提取有效数据
-5. **综合数据校验** - 全面验证数据完整性
+1. **开发者模式**: 直接运行 `python main.py`
+2. **客户端模式**: 使用PyInstaller打包成独立exe文件
 
-### 验证规则
+## 配置说明
 
-- 所有项目包含必要字段（type, number, content）
-- Question项目包含answer和analysis字段
-- Context和Question按逻辑顺序排列
-- 题目编号连续完整（1-24题及子题）
-- 无错误条目或损坏数据
+- API密钥配置在 `config.json` 中
+- 模型选择支持 DeepSeek、Qwen 等多种模型
+- 支持并发限制配置，避免API调用超限
+- 输出目录、临时目录均可配置
 
-## 支持的文档类型
+## 用户模式 vs 开发者模式
 
-特别适合处理包含以下结构的文档：
-- 上下文段落（如"一、二、三..."）
-- 选择题（如"1、2、3..."）
-- 填空题、问答题
-- 包含答案和解析的题目
+- **用户模式** (默认): 显示简洁操作流程，不显示技术细节
+- **开发者模式** (勾选开关): 显示详细处理日志，保存中间文件用于调试
 
 ## 技术栈
 
 - Python 3.x
-- python-docx (文档解析)
-- OpenAI API / DeepSeek或其他LLM接口
+- CustomTkinter (GUI界面)
+- markitdown (文档解析)
+- OpenAI Compatible API (DeepSeek/Qwen等)
 - python-pptx (PPT生成)
-- markdown-it-py (Markdown处理)
-- Marp (用于PPTX转换)
+- json (配置管理)
 
 ## 注意事项
 
 - 确保API密钥配置正确
 - 文档内容格式应相对规整以获得最佳效果
-- 如遇处理错误，可使用数据修复工具进行恢复
 - 中间文件会自动管理，但可以手动清理
 - 为增强LLM响应的健壮性，系统会在发送请求时要求LLM遵守严格的JSON输出格式，并在接收响应时对非法转义字符进行清理
 
@@ -124,6 +225,6 @@ python tests/integration_tests/integration_suite.py phase3  # Phase3验证
 
 - Phase 1: 文档解析与内容提取
 - Phase 2: 内容分块与预处理
-- Phase 3: AI结构化提取与渲染
-- Phase 4: Marp渲染与PPTX转换
-- Phase 5: 数据完整性验证与修复
+- Phase 3: AI结构化提取
+- Phase 4: PPTX渲染与最终输出
+- Phase 5: 用户体验优化与配置外置化
