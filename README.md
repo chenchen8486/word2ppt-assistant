@@ -228,3 +228,29 @@ python main.py
 - Phase 3: AI结构化提取
 - Phase 4: PPTX渲染与最终输出
 - Phase 5: 用户体验优化与配置外置化
+
+## 算法说明
+
+项目包含详细的算法手册 `Algorithm.md`，其中涵盖：
+
+### 项目资源文件说明
+- `user_templates/` 目录包含用于LLM调用时的Few-shot Learning样本：
+  - `01_raw_input.md`: 原始输入样本文件，用于展示输入格式示例
+  - `02_target_output.json`: 目标输出样本文件，用于定义期望的输出结构
+  - 应用场景：Prompt Engineering、开发参考、质量基准
+
+### 核心模板文件说明
+- `data/template.pptx`: 作为PPTX生成的基础样式模板
+  - 作用：提供基础的样式、颜色、字体模板，确保所有生成的PPT保持一致的外观风格
+  - 应用位置：在`core/pptx_generator.py`中被用作基础模板创建新PPT
+
+### 四个核心处理阶段详解
+1. **Phase 1: 文档解析 (Doc Loader)** - 使用markitdown库解析Word文档为Markdown格式
+2. **Phase 2: 内容分块 (Chunk Manager)** - 基于规则的分块算法，针对不同题型进行内容划分
+3. **Phase 3: LLM结构化提取 (LLM Client)** - 利用大语言模型将内容结构化为JSON格式
+4. **Phase 4: PPTX生成 (PPTX Generator)** - 基于结构化数据和模板生成PowerPoint文档
+
+### 针对特定格式（如化学试卷）的优化建议
+- 最优改造点：Phase 2 (Chunk Manager) - 更新正则表达式匹配规则，添加专用分块规则
+- 次优改造点：Phase 3 (LLM Client) - 微调提示词以更好地理解专业术语
+- 辅助改造点：Phase 4 (PPTX Generator) - 优化专业内容的渲染方式
