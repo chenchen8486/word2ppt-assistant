@@ -18,6 +18,70 @@ Phase 4: PPTX生成 (PPTX Generator)
 
 ---
 
+## 项目资源文件说明
+
+### user_templates/ 目录文件
+
+#### 文件说明
+- `01_raw_input.md`: 原始输入样本文件，用于展示输入格式示例
+- `02_target_output.json`: 目标输出样本文件，用于定义期望的输出结构
+
+#### 应用场景
+1. **Prompt Engineering**: 作为LLM调用时的Few-shot Learning样本
+2. **开发参考**: 为开发者提供输入输出格式参考
+3. **质量基准**: 作为结构化提取质量的黄金标准
+
+#### 具体应用位置
+- `core/llm_client.py`: 在构建API调用的提示词时，作为示例输入
+- 用于向LLM展示期望的输出格式结构
+- **注意**: 这些文件仅供只读参考，代码不会修改它们
+
+---
+
+## 核心模板文件说明
+
+### template.pptx 应用
+
+#### 文件位置
+- `data/template.pptx` (在代码中引用路径为 "data/template.pptx")
+
+#### 应用场景
+1. **样式基准**: 为生成的PPT提供基础的样式、颜色、字体模板
+2. **版式参考**: 定义幻灯片的基本布局和设计风格
+3. **主题延续**: 确保所有生成的PPT保持一致的外观风格
+
+#### 具体应用位置
+- `core/pptx_generator.py`: 在PPTXGenerator类中调用
+- 作为python-pptx库的模板输入参数
+- 在generate()方法中被用作基础模板创建新PPT
+
+---
+
+## Phase 1: 文档解析 (Doc Loader)
+
+### 1.1 核心算法
+- **输入**: `.docx` 文件
+- **处理**: 使用 `markitdown` 库解析文档
+- **输出**: `.raw.md` 文件
+
+### 1.2 算法详情
+```
+1. 读取Word文档内容
+2. 保留文本结构、图片、表格
+3. 转换为Markdown格式
+4. 输出到临时构建目录
+```
+
+### 1.3 涉及文件
+- `utils/doc_loader.py`
+- 输出路径: `data/02_temp_build/{filename}_raw.md`
+
+### 1.4 可变参数
+- 文档格式兼容性（不同版本Word）
+- 图片/表格提取策略
+
+---
+
 ## Phase 1: 文档解析 (Doc Loader)
 
 ### 1.1 核心算法
@@ -109,7 +173,7 @@ for each paragraph in markdown:
 ### 3.2 API交互流程
 ```
 1. 遍历每个文档块
-2. 构建结构化提取prompt
+2. 构建结构化提取prompt (使用user_templates作为few-shot示例)
 3. 调用LLM API (DeepSeek/OpenAI Compatible)
 4. 解析返回的JSON结构
 5. 验证和清洗数据
@@ -122,12 +186,14 @@ User Prompt:
 {
   "instruction": "将以下文本转换为结构化数据",
   "content": "原始文本内容",
+  "examples": "user_templates/01_raw_input.md 和 user_templates/02_target_output.json 中的示例",
   "schema": "期望的JSON结构"
 }
 ```
 
 ### 3.4 涉及文件
 - `core/llm_client.py`
+- 参考文件: `user_templates/01_raw_input.md`, `user_templates/02_target_output.json`
 - 输出路径: `data/02_temp_build/{filename}_extracted.json`
 
 ### 3.5 可变参数
@@ -136,10 +202,12 @@ User Prompt:
 - 并发限制
 - 重试次数
 - 提示词模板
+- Few-shot示例来源 (user_templates)
 
 ### 3.6 提示词优化 (化学试卷场景)
 ```
 - 针对化学术语进行提示词微调
+- 在few-shot示例中加入化学相关示例
 - 调整实体识别的prompt模板
 - 添加化学式识别规则
 ```
@@ -150,7 +218,7 @@ User Prompt:
 
 ### 4.1 核心算法
 - **输入**: 结构化JSON数据
-- **处理**: PowerPoint文档生成
+- **处理**: PowerPoint文档生成 (基于template.pptx)
 - **输出**: `.pptx` 文件
 
 ### 4.2 渲染逻辑
@@ -160,7 +228,7 @@ User Prompt:
    - Context类型 → 标题幻灯片
    - Question类型 → 问题幻灯片
    - Options类型 → 选项幻灯片
-3. 应用样式和布局
+3. 应用template.pptx的样式和布局
 4. 生成PPTX文件
 ```
 
@@ -172,17 +240,19 @@ User Prompt:
 
 ### 4.4 涉及文件
 - `core/pptx_generator.py`
+- 模板文件: `data/template.pptx`
 - 输出路径: `data/03_output_pptx/{filename}.pptx`
 
 ### 4.5 可变参数
 - 字体设置
 - 排版权重阈值
 - 幻灯片布局
-- 样式模板
+- 样式模板 (template.pptx)
 
 ### 4.6 化学公式渲染 (化学试卷场景)
 - 需要特殊处理化学式格式
 - 可能需要LaTeX渲染支持
+- template.pptx可预设化学公式样式
 
 ---
 
@@ -284,13 +354,15 @@ User Prompt:
 
 ### 推荐改造路径
 1. **第一步**: 扩展Phase 2的分块规则识别化学试卷格式
-2. **第二步**: 微调Phase 3的提示词以更好地理解化学内容
-3. **第三步**: 优化Phase 4的渲染以处理化学式显示
+2. **第二步**: 微调Phase 3的提示词以更好地理解化学内容 (可考虑更新user_templates)
+3. **第三步**: 优化Phase 4的渲染以处理化学式显示 (更新template.pptx)
 
 ### 具体实施要点
 - 保留原有通用规则兼容性
 - 添加化学试卷专用规则分支
 - 实现格式自动检测机制
 - 建立化学术语词典
+- 可选：更新user_templates以包含化学示例
+- 可选：更新template.pptx以优化化学公式显示
 
 ---
