@@ -12,7 +12,8 @@
       "Bash(where marp:*)",
       "Bash(del:*)",
       "Bash(find .:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "WebSearch"
     ]
   }
 }
