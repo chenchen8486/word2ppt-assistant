@@ -59,3 +59,16 @@ Thumbs.db
 .vscode/
 .idea/
 .cursor/
+
+# =========================
+# 7. PyInstaller构建产物 (已移除的构建产物)
+# =========================
+# 构建临时文件
+build/
+dist/
+*.spec
+
+# Python缓存
+*.pyc
+*.pyo
+.__pycache__/

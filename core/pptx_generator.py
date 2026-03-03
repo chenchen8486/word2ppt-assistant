@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from pathlib import Path
 from pptx import Presentation
 from pptx.util import Pt
@@ -15,17 +16,40 @@ class PPTXGenerator:
     """
 
     def __init__(self):
-        # 配置参数
-        self.context_layout_idx = 1  # Context专用布局
-        self.question_layout_idx = 2  # Question综合专用布局
+        # 查找模板文件
+        self.template_path = self._find_template()
+        if self.template_path is None:
+            print("警告: 未找到 template.pptx 模板文件")
+            print("请确保 data/template.pptx 文件存在")
 
-        self.context_placeholder_idx = 13  # Context专用文本框
+    def _find_template(self) -> str:
+        """
+        查找模板文件，支持多种路径
+        """
+        from pathlib import Path
 
-        self.context_max_chars = 450  # Context最大字符数
-        self.answer_analysis_max_chars = 400  # Answer/Analysis最大字符数
-        self.question_max_chars = 1000  # Question整体权重阈值（提升到1000）
+        # 尝试多个可能的模板位置
+        potential_paths = [
+            "data/template.pptx",  # 开发环境
+            "template.pptx",       # 根目录
+            Path(__file__).parent.parent / "data" / "template.pptx",  # 相对于当前文件
+        ]
 
-        self.noise_threshold = 15  # 智能降噪阈值
+        # 打包环境检查
+        if getattr(sys, 'frozen', False):
+            # 打包后，模板可能在 exe 同级目录的 data/ 下
+            exe_dir = Path(sys.executable).parent
+            potential_paths.append(exe_dir / "data" / "template.pptx")
+
+        for path in potential_paths:
+            try:
+                if Path(path).exists():
+                    print(f"找到模板文件: {Path(path).absolute()}")
+                    return str(Path(path).absolute())
+            except:
+                continue
+
+        return None
 
     def _get_weighted_length(self, text: str) -> int:
         """
@@ -517,24 +541,36 @@ class PPTXGenerator:
                 # 更新当前页权重
                 current_page_weight += ana_chunk_weight
 
-    def generate(self, json_path: str, template_path: str, output_path: str, doc_title: str = None) -> bool:
+    def generate(self, json_path: str, template_path: str = None, output_path: str = None, doc_title: str = None) -> bool:
         """
         生成PPTX文件的核心方法
 
         Args:
             json_path: 输入的JSON文件路径（Phase 2生成的数据）
-            template_path: 模板PPTX文件路径
+            template_path: 模板PPTX文件路径（可选，如果不指定则使用默认模板）
             output_path: 输出PPTX文件路径
+            doc_title: 文档标题
 
         Returns:
             是否成功生成
         """
         try:
+            # 使用传入的模板路径或默认模板路径
+            if template_path is None:
+                if self.template_path is None:
+                    print("Error: 未指定模板路径且未找到默认模板")
+                    return False
+                template_path = self.template_path
+
             # 加载JSON数据
             with open(json_path, 'r', encoding='utf-8-sig') as f:
                 extracted_data = json.load(f)
 
-            # 加载模板
+            # 加载模板 - 检查模板文件是否存在
+            if not Path(template_path).exists():
+                print(f"Error: 模板文件不存在: {template_path}")
+                return False
+
             prs = Presentation(template_path)
 
             # 检查是否有初始幻灯片，并将其作为封面页
@@ -578,7 +614,28 @@ class PPTXGenerator:
             return True
 
         except Exception as e:
-            print(f"Error generating PPTX: {str(e)}")
+            import traceback
+            error_msg = f"Error generating PPTX: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            # 尝试写入崩溃日志
+            try:
+                from pathlib import Path
+                # 尝试多个可能的日志位置
+                log_paths = [
+                    Path("crash_log.txt"),
+                    Path("data/02_temp_build/crash_log.txt"),
+                    Path("dist/Word2PPT-Assistant/crash_log.txt")
+                ]
+                for log_path in log_paths:
+                    try:
+                        log_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(log_path, 'w', encoding='utf-8') as f:
+                            f.write(error_msg)
+                        break
+                    except:
+                        continue
+            except:
+                pass
             return False
 
     def _process_item(self, prs, item: Dict[str, Any], is_first_item: bool = False):

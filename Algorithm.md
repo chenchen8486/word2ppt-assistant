@@ -375,3 +375,87 @@ User Prompt:
 - 可选：更新template.pptx以优化化学公式显示
 
 ---
+## 打包与部署配置
+
+### 打包工具配置 (PyInstaller)
+
+#### Word2PPT-Assistant.spec 配置文件
+
+Word2PPT-Assistant 使用 PyInstaller 进行打包，配置文件为 `Word2PPT-Assistant.spec`，关键配置包括：
+
+1. **数据文件包含**:
+   ```python
+   datas = [('user_templates', 'user_templates'), ('config.json', '.')]
+   ```
+
+2. **隐藏导入 (hiddenimports)**:
+   - markitdown, openai, python-pptx, pptx 等核心库
+   - customtkinter 相关模块
+   - jaraco 相关包及其子模块
+   - pkg_resources 相关模块
+   - magika, magika.types 等模型依赖
+
+3. **magika 模型文件收集**:
+   ```python
+   try:
+       magika_data = collect_data_files('magika')
+       datas += magika_data
+       print("Collected magika data files:", magika_data)
+   except Exception as e:
+       print(f"Could not collect magika data files: {e}")
+   ```
+
+4. **排除模块**:
+   - tkinter (避免与customtkinter冲突)
+   - setuptools, distutils, numpy.distutils (避免冲突)
+   - matplotlib, scipy, IPython, jupyter, pytest, unittest (减少包体积)
+
+5. **环境变量设置**:
+   ```python
+   os.environ['SETUPTOOLS_USE_DISTUTILS'] = 'stdlib'
+   ```
+
+#### 打包命令
+
+打包使用以下命令：
+```bash
+pyinstaller Word2PPT-Assistant.spec --clean
+```
+
+#### 生成的目录结构
+
+打包完成后，在 `dist/Word2PPT-Assistant/` 目录下生成：
+
+- `Word2PPT-Assistant.exe` - 主可执行程序
+- `_internal/` - Python运行时和依赖库
+- `config.json` - 应用配置文件
+- `user_templates/` - 用户模板文件
+- `data/` - 数据目录结构
+  - `01_input_docs/` - 输入文档目录
+  - `02_temp_build/` - 临时构建目录
+  - `03_output_pptx/` - 输出PPT目录
+
+### 重要依赖处理
+
+#### markitdown/magika 模型依赖
+
+由于 markitdown 库依赖 magika 模型进行文档解析，打包时需要特别处理：
+
+1. 通过 `collect_data_files('magika')` 确保模型文件被打包
+2. 模型文件包括: `config.min.json`, `metadata.json`, `model.onnx` 等
+3. 这些文件对于 Word 文档解析至关重要
+
+#### jaraco 包依赖
+
+为了确保文档解析功能正常工作，添加了完整的 jaraco 相关依赖：
+- `jaraco`, `jaraco.text`, `jaraco.collections`, `jaraco.functools`
+- `more_itertools` - jaraco 的常用依赖
+- `pkg_resources._vendor.jaraco.text` 等具体模块
+
+#### customtkinter GUI 资源
+
+通过 `collect_all('customtkinter')` 收集所有 GUI 相关资源，
+确保打包后的应用程序具有完整的图形界面功能。
+
+---
+

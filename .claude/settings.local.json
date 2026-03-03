@@ -13,7 +13,15 @@
       "Bash(del:*)",
       "Bash(find .:*)",
       "Bash(rm:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dir dist\\\\Word2PPT-Assistant:*)",
+      "Bash(mkdir:*)",
+      "Bash(pyinstaller:*)",
+      "Bash(pyi-makespec:*)",
+      "Bash(\"D:\\\\project\\\\python\\\\word2ppt-assistant\\\\Algorithm.md\":*)",
+      "Bash(kill %1:*)",
+      "Bash(pip show:*)",
+      "Bash(cp:*)"
     ]
   }
 }

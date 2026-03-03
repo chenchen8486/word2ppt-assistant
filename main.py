@@ -217,6 +217,7 @@ class Word2PPTApp(ctk.CTk):
         )
         if file_path:
             self.log_message(f"已选择文件: {Path(file_path).name}")
+            self.log_message(f"完整路径: {file_path}")
             # 记住输入文件夹路径
             input_folder = str(Path(file_path).parent)
             self.config_manager.set_last_used_path("input_folder", input_folder)
@@ -232,6 +233,7 @@ class Word2PPTApp(ctk.CTk):
         )
         if folder_path:
             self.log_message(f"已选择文件夹: {Path(folder_path).name}")
+            self.log_message(f"完整路径: {folder_path}")
             # 记住输入文件夹路径
             self.config_manager.set_last_used_path("input_folder", folder_path)
 
@@ -341,4 +343,47 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import traceback
+    try:
+        main()
+    except Exception as e:
+        # 获取完整错误信息
+        error_msg = traceback.format_exc()
+
+        # 获取应用程序路径
+        if getattr(sys, 'frozen', False):
+            # 打包后的可执行文件
+            base_path = Path(sys.executable).parent
+        else:
+            # 开发环境
+            base_path = Path(__file__).parent
+
+        # 写入崩溃日志
+        crash_log_path = base_path / "crash_log.txt"
+        with open(crash_log_path, "w", encoding="utf-8") as f:
+            f.write(f"Word2PPT-Assistant 崩溃日志\n")
+            f.write(f"时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"错误类型: {type(e).__name__}\n")
+            f.write(f"错误信息: {str(e)}\n")
+            f.write("\n")
+            f.write("=" * 60 + "\n")
+            f.write("完整堆栈跟踪:\n")
+            f.write("=" * 60 + "\n")
+            f.write(error_msg)
+
+        # 同时在控制台输出
+        print(f"程序发生严重错误，已记录到 crash_log.txt")
+        print(error_msg)
+
+        # 退出前显示错误信息
+        if getattr(sys, 'frozen', False):
+            # 打包后弹出对话框显示错误
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("严重错误", f"程序发生严重错误，已记录到 crash_log.txt\n\n{str(e)}")
+            root.destroy()
+
+        import sys
+        sys.exit(1)

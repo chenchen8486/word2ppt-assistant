@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 def get_resource_path(relative_path: str) -> Path:
     """
     获取资源文件的实际路径，支持 PyInstaller 打包后的环境
+    注意：此函数仅用于读取打包在 _internal 中的只读资源文件
 
     Args:
         relative_path: 相对路径
@@ -15,13 +16,16 @@ def get_resource_path(relative_path: str) -> Path:
     Returns:
         实际的文件路径
     """
+    # 对于用户可写文件（config.json, data/, user_templates/），
+    # 必须使用 get_application_path，指向 exe 所在目录
+    # 这里保留仅用于读取模板等只读资源
     try:
         # PyInstaller 创建临时文件夹，并将路径存储在 _MEIPASS 中
         base_path = Path(sys._MEIPASS)
         return base_path / relative_path
     except Exception:
         # 如果没有 _MEIPASS，则是在开发环境中运行
-        base_path = Path(getattr(sys, '_MEIPASS', Path.cwd()))
+        base_path = Path.cwd()
         return base_path / relative_path
 
 

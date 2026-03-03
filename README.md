@@ -131,8 +131,7 @@ user_templates/             # 用户模板目录
 utils/                      # 工具模块
 ├── config_manager.py      # 配置管理器
 ├── doc_loader.py          # 文档加载器
-├── file_helper.py         # 文件助手
-└── dependency_manager.py  # 依赖管理器
+└── file_helper.py         # 文件助手
 
 core/                       # 核心模块
 ├── batch_processor.py     # 批量处理器
@@ -142,6 +141,8 @@ core/                       # 核心模块
 
 tests/                      # 测试模块
 └── unit_tests/            # 单元测试
+
+build_release.py            # 自动化构建脚本（生成独立exe）
 ```
 
 ## 主要组件
@@ -149,11 +150,10 @@ tests/                      # 测试模块
 - `main.py`: GUI主界面入口
 - `core/batch_processor.py`: 批量处理引擎
 - `core/llm_client.py`: LLM交互客户端
-- `core/pptx_generator.py`: PPTX生成器
+- `core/pptx_generator.py`: PPTX生成器（支持模板自动查找）
 - `utils/doc_loader.py`: 文档加载工具
 - `utils/config_manager.py`: 配置管理工具
-- `utils/data_repair.py`: 通用数据修复工具
-- `utils/data_validator.py`: 数据验证工具
+- `build_release.py`: 自动化构建脚本（生成独立exe）
 - `tests/unit_tests/`: 各阶段测试套件
 
 ## 架构优化
@@ -164,6 +164,7 @@ tests/                      # 测试模块
 - 添加文件夹路径记忆功能
 - 支持PyInstaller打包兼容
 - 配置外置化（config.json）
+- 添加自动化构建脚本（build_release.py）
 - 消除过度工程化，保持核心功能完整
 
 ## 使用方法
@@ -191,7 +192,26 @@ python main.py
 ## 部署方式
 
 1. **开发者模式**: 直接运行 `python main.py`
-2. **客户端模式**: 使用PyInstaller打包成独立exe文件
+2. **客户端模式**: 使用 `python build_release.py --yes` 打包成独立exe文件
+
+## 构建独立exe文件
+
+项目提供了自动化构建脚本 `build_release.py`，可一键生成完整的独立exe文件：
+
+```bash
+# 自动确认模式（推荐）
+python build_release.py --yes
+
+# 交互模式
+python build_release.py
+```
+
+构建完成后，发布包位于 `dist/Word2PPT-Assistant/` 目录，包含：
+- `Word2PPT-Assistant.exe` - 主程序
+- `config.json` - 配置文件（可编辑）
+- `user_templates/` - 模板文件（可修改）
+- `data/` - 数据目录
+- `_internal/` - Python运行时和依赖库
 
 ## 配置说明
 
