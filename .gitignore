@@ -26,6 +26,8 @@ data/01_input_docs - 副本/
 API_KEY.txt
 config.json
 .env
+# 忽略配置目录下的敏感配置文件
+config/config.json
 
 # =========================
 # 4. 项目运行时的临时文件与下载的二进制包
@@ -37,7 +39,7 @@ marp.zip
 # 渲染过程中的临时 Markdown
 temp_slides.md
 temp.md
-# 日志文件
+# 日志文件 - 保留 logs 目录但忽略其中的具体日志文件
 logs/
 *.log
 crash_log.txt
