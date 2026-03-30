@@ -37,7 +37,9 @@
       "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe test_phase3_fix.py)",
       "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe test_config.py)",
       "Bash(dir:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe verify_context.py)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe inspect_template.py)"
     ]
   }
 }
