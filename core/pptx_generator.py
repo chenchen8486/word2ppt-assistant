@@ -282,7 +282,19 @@ class PPTXGenerator:
             target_shape = None
             for shape in slide.shapes:
                 if hasattr(shape, 'placeholder_format') and shape.placeholder_format is not None:
-                    if shape.placeholder_format.idx == self.context_placeholder_idx:
+                    # 检查占位符索引是否匹配
+                    if hasattr(shape.placeholder_format, 'idx') and shape.placeholder_format.idx == self.context_placeholder_idx:
+                        target_shape = shape
+                        break
+                    # 如果找不到指定索引的占位符，尝试寻找BODY类型的占位符
+                    elif hasattr(shape.placeholder_format, 'type') and shape.placeholder_format.type == 2:  # BODY type
+                        target_shape = shape
+                        break
+
+            # 如果还是没找到目标占位符，尝试寻找任何有文本框的形状
+            if target_shape is None:
+                for shape in slide.shapes:
+                    if hasattr(shape, 'has_text_frame') and shape.has_text_frame:
                         target_shape = shape
                         break
 
@@ -304,6 +316,8 @@ class PPTXGenerator:
                 p.space_after = Pt(0)
                 p.space_before = Pt(0)
                 p.line_spacing = self.line_spacing
+            else:
+                print(f"警告: 无法找到合适的文本占位符来显示context内容: {chunk[:50]}...")
 
     def _create_question_slides(self, prs, content: str, answer: str, analysis: str, number: str = ""):
         """
@@ -355,9 +369,22 @@ class PPTXGenerator:
                             max_size = shape.width * shape.height
                             body_shape = shape
 
-                # 如果没找到合适的占位符，抛出异常
+                # 如果没找到合适的占位符，尝试找任何有文本框的形状
+                if body_shape is None:
+                    for shape in slide.shapes:
+                        if hasattr(shape, 'has_text_frame') and shape.has_text_frame:
+                            body_shape = shape
+                            break
+
+                # 如果还是没找到合适的占位符，尝试创建一个文本框
                 if body_shape is None or not body_shape.has_text_frame:
-                    raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+                    print(f"警告: 未能找到合适的文本占位符，创建新的文本框")
+                    # 在幻灯片上创建一个新的文本框
+                    left = 1000000  # EMU units
+                    top = 1000000
+                    width = 8000000
+                    height = 5000000
+                    body_shape = slide.shapes.add_textbox(left, top, width, height)
 
                 # 获取文本框架
                 tf = body_shape.text_frame
@@ -384,9 +411,22 @@ class PPTXGenerator:
                             max_size = shape.width * shape.height
                             body_shape = shape
 
-                # 如果没找到合适的占位符，抛出异常
+                # 如果没找到合适的占位符，尝试找任何有文本框的形状
+                if body_shape is None:
+                    for shape in slide.shapes:
+                        if hasattr(shape, 'has_text_frame') and shape.has_text_frame:
+                            body_shape = shape
+                            break
+
+                # 如果还是没找到合适的占位符，尝试创建一个文本框
                 if body_shape is None or not body_shape.has_text_frame:
-                    raise ValueError("未能找到合适的文本占位符来渲染题目内容")
+                    print(f"警告: 未能找到合适的文本占位符，创建新的文本框")
+                    # 在幻灯片上创建一个新的文本框
+                    left = 1000000  # EMU units
+                    top = 1000000
+                    width = 8000000
+                    height = 5000000
+                    body_shape = slide.shapes.add_textbox(left, top, width, height)
 
                 # 获取文本框架
                 tf = body_shape.text_frame
