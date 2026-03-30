@@ -738,10 +738,14 @@ class PPTXGenerator:
             number = item.get('number', '')  # 提取题号
 
             # 泛化剔除冗余标题（首项智能屏蔽）：如果第一项是context类型且number为空字符串，
-            # 极可能是LLM提取的试卷头部标题信息，直接跳过
+            # 极可能是LLM提取的试卷头部标题信息，进行智能判断
             if is_first_item and number == "":
-                print(f"Skipping redundant header context: '{content[:50]}...' (detected as header)")
-                return
+                # 智能判断是否为冗余标题：检查内容是否包含典型的试卷标题特征
+                header_keywords = ["试卷", "试题", "考试", "测试", "考卷", "答题", "注意事项"]
+                is_header = any(keyword in content for keyword in header_keywords)
+                if is_header:
+                    print(f"Skipping redundant header context: '{content[:50]}...' (detected as header)")
+                    return
 
             # 智能降噪：如果内容长度小于阈值，跳过
             if len(content.strip()) < self.noise_threshold:
