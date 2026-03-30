@@ -142,6 +142,7 @@ core/                       # 核心模块
 tests/                      # 测试模块
 └── unit_tests/            # 单元测试
 
+build.bat                  # 一键打包脚本 (Windows)
 build_release.py            # 自动化构建脚本（生成独立exe）
 ```
 
@@ -192,18 +193,18 @@ python main.py
 ## 部署方式
 
 1. **开发者模式**: 直接运行 `python main.py`
-2. **客户端模式**: 使用 `python build_release.py --yes` 打包成独立exe文件
+2. **客户端模式 (Windows)**: 直接运行 `build.bat` 或执行 `python build_release.py --yes` 打包成独立exe文件
 
 ## 构建独立exe文件
 
-项目提供了自动化构建脚本 `build_release.py`，可一键生成完整的独立exe文件：
+项目提供了 Windows 一键打包脚本 `build.bat` 和自动化构建 Python 脚本 `build_release.py`，可一键生成完整的独立exe文件：
 
 ```bash
-# 自动确认模式（推荐）
-python build_release.py --yes
+# Windows 推荐方式
+./build.bat
 
-# 交互模式
-python build_release.py
+# 或者使用 Python 脚本自动确认模式
+python build_release.py --yes
 ```
 
 构建完成后，发布包位于 `dist/Word2PPT-Assistant/` 目录，包含：

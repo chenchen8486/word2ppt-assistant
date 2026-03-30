@@ -80,6 +80,8 @@ def build_exe():
         "--collect-all=customtkinter",                # 收集 customtkinter 资源
         "--collect-data=magika",                      # 收集 magika 模型
         "--hidden-import=pptx",                       # 隐藏导入 pptx
+        "--exclude-module=PyQt5",                     # 排除 PyQt5，避免与 PySide6 冲突
+        "--exclude-module=PySide6",                   # 排除 PySide6，项目不依赖 Qt
         "main.py"
     ]
 

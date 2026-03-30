@@ -1,0 +1,23 @@
+﻿{
+  "font_family": "楷体",
+  "font_size": 14,
+  "line_spacing": 1.5,
+  "question_layout_idx": 2,
+  "context_layout_idx": 1,
+  "context_placeholder_idx": 0,
+  "question_max_chars": 1000,
+  "context_max_chars": 1200,
+  "number_font_family": "黑体",
+  "answer_font_color": [
+    220,
+    53,
+    69
+  ],
+  "answer_font_bold": true,
+  "analysis_font_color": [
+    40,
+    167,
+    69
+  ],
+  "analysis_font_bold": false
+}

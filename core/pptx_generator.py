@@ -15,17 +15,68 @@ class PPTXGenerator:
     使用python-pptx库，根据预定义的template.pptx模板生成PPTX文件
     """
 
-    def __init__(self):
+    def __init__(self, config_path: str = "config/style_config.json"):
+        # 加载配置
+        self.config = self._load_config(config_path)
+
         # 查找模板文件
         self.template_path = self._find_template()
         if self.template_path is None:
             print("警告: 未找到 template.pptx 模板文件")
             print("请确保 data/template.pptx 文件存在")
 
+        # 设置参数从配置文件
+        self.context_layout_idx = self.config.get("context_layout_idx", 1)
+        self.context_placeholder_idx = self.config.get("context_placeholder_idx", 0)
+        self.question_layout_idx = self.config.get("question_layout_idx", 2)
+        self.question_max_chars = self.config.get("question_max_chars", 1000)
+        self.context_max_chars = self.config.get("context_max_chars", 1200)
+        self.noise_threshold = 10
+
+        # 字体配置
+        self.font_family = self.config.get("font_family", "微软雅黑")
+        self.number_font_family = self.config.get("number_font_family", "黑体")
+        self.font_size = self.config.get("font_size", 14)
+        self.line_spacing = self.config.get("line_spacing", 1.5)
+
+        # 颜色配置
+        self.answer_color = RGBColor(*self.config.get("answer_font_color", [220, 53, 69]))
+        self.analysis_color = RGBColor(*self.config.get("analysis_font_color", [40, 167, 69]))
+
+        # 样式配置
+        self.answer_font_bold = self.config.get("answer_font_bold", True)
+        self.analysis_font_bold = self.config.get("analysis_font_bold", False)
+
+    def _load_config(self, config_path: str) -> dict:
+        """加载配置文件"""
+        config_file = Path(config_path)
+        if config_file.exists():
+            with open(config_file, 'r', encoding='utf-8-sig') as f:
+                return json.load(f)
+        else:
+            # 如果配置文件不存在，返回默认配置
+            print(f"警告: 配置文件 {config_path} 不存在，使用默认配置")
+            return {
+                "font_family": "微软雅黑",
+                "font_size": 14,
+                "line_spacing": 1.0,
+                "question_layout_idx": 2,
+                "context_layout_idx": 1,
+                "context_placeholder_idx": 0,
+                "question_max_chars": 1000,
+                "context_max_chars": 1200,
+                "number_font_family": "黑体",
+                "answer_font_color": [220, 53, 69],
+                "answer_font_bold": True,
+                "analysis_font_color": [40, 167, 69],
+                "analysis_font_bold": False
+            }
+
     def _find_template(self) -> str:
         """
         查找模板文件，支持多种路径
         """
+        import sys
         from pathlib import Path
 
         # 尝试多个可能的模板位置
@@ -220,8 +271,8 @@ class PPTXGenerator:
         else:
             full_content = content
 
-        # 按句子分割长文本，使用1200权重的饱和阈值（符合14pt下的空间优化）
-        content_chunks = self._split_text_by_sentences(full_content, 1200)
+        # 按句子分割长文本，使用context_max_chars权重的饱和阈值
+        content_chunks = self._split_text_by_sentences(full_content, self.context_max_chars)
 
         for chunk in content_chunks:
             # 创建新幻灯片
@@ -241,13 +292,18 @@ class PPTXGenerator:
                 text_frame = target_shape.text_frame
                 p = text_frame.paragraphs[0] if text_frame.paragraphs else text_frame.add_paragraph()
                 p.text = chunk
-                p.font.size = Pt(14)  # 设置字体大小为14pt
-                # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+                p.font.size = Pt(self.font_size)  # 使用配置的字体大小
+                # 如果段落以阿拉伯数字开头，使用数字字体，否则使用常规字体
                 if re.match(r'^\d+', p.text.strip()):
-                    p.font.name = '黑体'
+                    p.font.name = self.number_font_family
                 else:
-                    p.font.name = '微软雅黑'  # 强制设置中文字体
+                    p.font.name = self.font_family  # 使用配置的字体
                 p.alignment = PP_ALIGN.LEFT  # 左对齐
+
+                # 设置行间距
+                p.space_after = Pt(0)
+                p.space_before = Pt(0)
+                p.line_spacing = self.line_spacing
 
     def _create_question_slides(self, prs, content: str, answer: str, analysis: str, number: str = ""):
         """
@@ -268,7 +324,7 @@ class PPTXGenerator:
 
         # 1. 渲染题干 (Content)
         # 将题干按权重分割成块
-        content_chunks = self._split_text_by_sentences(full_content, 800)
+        content_chunks = self._split_text_by_sentences(full_content, self.question_max_chars)
 
         # 循环处理题干chunks
         last_tf = None
@@ -342,14 +398,19 @@ class PPTXGenerator:
             # 写入题干内容
             p = tf.paragraphs[0] if tf.paragraphs else tf.add_paragraph()  # 获取第一个段落或添加新段落
             p.text = chunk
-            p.font.size = Pt(14)  # 设置字体大小为14pt
+            p.font.size = Pt(self.font_size)  # 使用配置的字体大小
             p.font.bold = False   # 正常粗细
-            # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+            # 如果段落以阿拉伯数字开头，使用数字字体，否则使用常规字体
             if re.match(r'^\d+', chunk.strip()):
-                p.font.name = '黑体'
+                p.font.name = self.number_font_family
             else:
-                p.font.name = '微软雅黑'  # 强制设置中文字体
+                p.font.name = self.font_family  # 使用配置的字体
             p.alignment = PP_ALIGN.LEFT  # 左对齐
+
+            # 设置行间距
+            p.space_after = Pt(0)
+            p.space_before = Pt(0)
+            p.line_spacing = self.line_spacing
 
             # 更新当前页权重
             current_page_weight = self._get_weighted_length(chunk)
@@ -359,7 +420,7 @@ class PPTXGenerator:
             answer_weight = self._get_weighted_length(answer)
 
             # 检查当前页是否能容纳答案
-            if current_page_weight + answer_weight > 800:
+            if current_page_weight + answer_weight > self.question_max_chars:
                 # 需要翻页
                 slide = prs.slides.add_slide(prs.slide_layouts[self.question_layout_idx])
 
@@ -394,15 +455,20 @@ class PPTXGenerator:
             # 写入答案
             answer_p = last_tf.add_paragraph()  # 添加新段落
             answer_p.text = f"【答案】{answer}"  # 移除\n前缀以符合零空行原则
-            answer_p.font.size = Pt(14)  # 设置字体大小为14pt
-            answer_p.font.bold = True    # 加粗
-            answer_p.font.color.rgb = RGBColor(220, 53, 69)  # 红色
-            # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+            answer_p.font.size = Pt(self.font_size)  # 使用配置的字体大小
+            answer_p.font.bold = self.answer_font_bold    # 使用配置的粗体设置
+            answer_p.font.color.rgb = self.answer_color  # 使用配置的颜色
+            # 如果段落以阿拉伯数字开头，使用数字字体，否则使用常规字体
             if re.match(r'^\d+', answer_p.text.strip()):
-                answer_p.font.name = '黑体'
+                answer_p.font.name = self.number_font_family
             else:
-                answer_p.font.name = '微软雅黑'  # 强制设置中文字体
+                answer_p.font.name = self.font_family  # 使用配置的字体
             answer_p.alignment = PP_ALIGN.LEFT  # 左对齐
+
+            # 设置行间距
+            answer_p.space_after = Pt(0)
+            answer_p.space_before = Pt(0)
+            answer_p.line_spacing = self.line_spacing
 
             # 更新当前页权重
             current_page_weight += answer_weight
@@ -528,15 +594,20 @@ class PPTXGenerator:
                 else:
                     analysis_p.text = f"[解析续]{ana_chunk}"
 
-                analysis_p.font.size = Pt(14)  # 设置字体大小为14pt
-                analysis_p.font.bold = False   # 正常粗细
-                analysis_p.font.color.rgb = RGBColor(40, 167, 69)  # 绿色
-                # 如果段落以阿拉伯数字开头，使用黑体，否则使用微软雅黑
+                analysis_p.font.size = Pt(self.font_size)  # 使用配置的字体大小
+                analysis_p.font.bold = self.analysis_font_bold   # 使用配置的粗体设置
+                analysis_p.font.color.rgb = self.analysis_color  # 使用配置的颜色
+                # 如果段落以阿拉伯数字开头，使用数字字体，否则使用常规字体
                 if re.match(r'^\d+', analysis_p.text.strip()):
-                    analysis_p.font.name = '黑体'
+                    analysis_p.font.name = self.number_font_family
                 else:
-                    analysis_p.font.name = '微软雅黑'  # 强制设置中文字体
+                    analysis_p.font.name = self.font_family  # 使用配置的字体
                 analysis_p.alignment = PP_ALIGN.LEFT  # 左对齐
+
+                # 设置行间距
+                analysis_p.space_after = Pt(0)
+                analysis_p.space_before = Pt(0)
+                analysis_p.line_spacing = self.line_spacing
 
                 # 更新当前页权重
                 current_page_weight += ana_chunk_weight
@@ -619,12 +690,12 @@ class PPTXGenerator:
             print(error_msg)
             # 尝试写入崩溃日志
             try:
-                from pathlib import Path
+                from pathlib import Path as LocalPath
                 # 尝试多个可能的日志位置
                 log_paths = [
-                    Path("crash_log.txt"),
-                    Path("data/02_temp_build/crash_log.txt"),
-                    Path("dist/Word2PPT-Assistant/crash_log.txt")
+                    LocalPath("crash_log.txt"),
+                    LocalPath("data/02_temp_build/crash_log.txt"),
+                    LocalPath("dist/Word2PPT-Assistant/crash_log.txt")
                 ]
                 for log_path in log_paths:
                     try:
