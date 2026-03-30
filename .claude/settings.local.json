@@ -21,7 +21,23 @@
       "Bash(\"D:\\\\project\\\\python\\\\word2ppt-assistant\\\\Algorithm.md\":*)",
       "Bash(kill %1:*)",
       "Bash(pip show:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(conda activate:*)",
+      "Bash(C:\\\\Users\\\\chenc\\\\anaconda3\\\\envs\\\\Chen\\\\python.exe -m pip install charset-normalizer)",
+      "Bash(C:\\\\Users\\\\chenc\\\\anaconda3\\\\envs\\\\Chen\\\\Scripts\\\\pip.exe install:*)",
+      "Bash(conda list:*)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"import charset_normalizer; print\\('Version:', charset_normalizer.__version__\\); print\\('File:', charset_normalizer.__file__\\)\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/Scripts/pip.exe install:*)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"import charset_normalizer.api; print\\('charset_normalizer.api imported successfully'\\)\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"from markitdown import MarkItDown; print\\('markitdown imported successfully'\\)\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"\ntry:\n    from markitdown import MarkItDown\n    print\\('OK: markitdown import successful'\\)\n    \n    from utils.doc_loader import extract_document_content\n    print\\('OK: utils.doc_loader import successful'\\)\n    \n    from core.batch_processor import AsyncBatchProcessor\n    print\\('OK: core.batch_processor import successful'\\)\n    \n    print\\('\\\\\\\\nAll imports successful!'\\)\nexcept Exception as e:\n    print\\(f'ERROR: {e}'\\)\n    import traceback\n    traceback.print_exc\\(\\)\n\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe main.py)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"\ntry:\n    from core.pptx_generator import PPTXGenerator\n    print\\('PPTXGenerator imported successfully'\\)\n    gen = PPTXGenerator\\(\\)\n    print\\('PPTXGenerator instantiated successfully'\\)\nexcept Exception as e:\n    import traceback\n    print\\(f'Error: {e}'\\)\n    traceback.print_exc\\(\\)\n\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe -c \"\ntry:\n    from markitdown import MarkItDown\n    print\\('OK: markitdown import successful'\\)\n    \n    from utils.doc_loader import extract_document_content\n    print\\('OK: utils.doc_loader import successful'\\)\n    \n    from core.batch_processor import AsyncBatchProcessor\n    print\\('OK: core.batch_processor import successful'\\)\n    \n    from core.pptx_generator import PPTXGenerator\n    print\\('OK: core.pptx_generator import successful'\\)\n    \n    print\\('\\\\\\\\nAll imports successful!'\\)\nexcept Exception as e:\n    print\\(f'ERROR: {e}'\\)\n    import traceback\n    traceback.print_exc\\(\\)\n\")",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe test_phase3_fix.py)",
+      "Bash(C:/Users/chenc/anaconda3/envs/Chen/python.exe test_config.py)",
+      "Bash(dir:*)",
+      "Bash(ls:*)"
     ]
   }
 }
